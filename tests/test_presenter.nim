@@ -80,15 +80,21 @@ suite "presenter":
         check r.transaction > last
         last = r.transaction
 
-  test "a stale image is dropped before it is offered":
+  test "a whole image is offered even when a newer frame is due":
+    # An upload that outlasts the Matrix tick must still be shown; the newer
+    # frame uploads once it is presented (the 1080p livelock).
     var p = initPresenter()
     p.setLock(true, 5, [alloc(1)])
     let up = p.take(akUpload)
+    p.markDirty() # ticks while the upload is in flight
     p.uploadStatus(up.resource, 2)
     p.markDirty()
-    let drop = p.take(akDropReady)
-    check drop.resource == up.resource
-    check p.next().kind == akUpload
+    let d = p.take(akDemand)
+    p.permit(41, 1, d.demand, 1)
+    let o = p.take(akCandidate)
+    check o.resource == up.resource
+    p.outcome(41, o.candidateGeneration, 2)
+    check p.take(akUpload).resource != up.resource
 
   test "a rejected or superseded candidate is offered again":
     var p = initPresenter()

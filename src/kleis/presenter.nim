@@ -34,7 +34,6 @@ type
     akRetire
     akCandidate
     akDemand
-    akDropReady
     akUpload
 
   Action* = object
@@ -134,12 +133,10 @@ proc next*(p: var Presenter): Action =
   if not p.drawing:
     return
   for i, o in p.outputs:
+    # A whole image is always offered, even when a newer frame is due: an
+    # upload can outlast the Matrix tick, and dropping every image that
+    # arrives behind one would never show any.
     if o.stage == stIdle and o.ready != 0 and not o.blocked:
-      if o.dirty:
-        # The image waiting to be offered is out of date: drop it.
-        return Action(
-          kind: akDropReady, index: i, resource: o.ready, transaction: p.nextTransaction
-        )
       return Action(
         kind: akDemand, index: i, transaction: p.nextTransaction, demand: p.nextDemand
       )
@@ -161,8 +158,6 @@ proc applied*(p: var Presenter, a: Action) =
     discard
   of akRetire:
     p.retiring.delete(0)
-  of akDropReady:
-    p.outputs[a.index].ready = 0
   of akCandidate:
     discard p.nextCandidate.mint()
     p.outputs[a.index].stage = stOffered
@@ -188,7 +183,7 @@ proc refused*(p: var Presenter, a: Action) =
   of akCandidate:
     p.outputs[a.index].stage = stIdle
     p.outputs[a.index].permit = 0
-  of akDemand, akUpload, akDropReady:
+  of akDemand, akUpload:
     p.outputs[a.index].blocked = true
   of akNone:
     discard

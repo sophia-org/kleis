@@ -159,7 +159,7 @@ proc act(p: var Provider) =
   case a.kind
   of akNone:
     return
-  of akRetire, akDropReady:
+  of akRetire:
     r = p.handle.lockRetire(a.transaction, a.resource, 1)
   of akDemand:
     let o = p.presenter.outputs[a.index].alloc
