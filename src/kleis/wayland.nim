@@ -17,7 +17,7 @@ when PkgConfigCheck.exitCode != 0:
       "missing system dependencies: install pkg-config plus development packages for wayland-client, xkbcommon, and pam"
   .}
 
-{.passC: "-Isrc -Isrc/lockme " & gorge("pkg-config --cflags " & PkgConfigDeps).}
+{.passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & PkgConfigDeps).}
 {.compile: "wayland_shim.c".}
 {.compile: "protocols/ext-session-lock-v1-protocol.c".}
 {.compile: "protocols/single-pixel-buffer-v1-protocol.c".}
@@ -100,34 +100,34 @@ type
 
   ExtSessionLockManager {.
     importc: "struct ext_session_lock_manager_v1",
-    header: "lockme/wayland_shim.h",
+    header: "kleis/wayland_shim.h",
     incompleteStruct
   .} = object
 
   ExtSessionLock {.
     importc: "struct ext_session_lock_v1",
-    header: "lockme/wayland_shim.h",
+    header: "kleis/wayland_shim.h",
     incompleteStruct
   .} = object
 
   ExtSessionLockSurface {.
     importc: "struct ext_session_lock_surface_v1",
-    header: "lockme/wayland_shim.h",
+    header: "kleis/wayland_shim.h",
     incompleteStruct
   .} = object
 
   WpSinglePixelBufferManager {.
     importc: "struct wp_single_pixel_buffer_manager_v1",
-    header: "lockme/wayland_shim.h",
+    header: "kleis/wayland_shim.h",
     incompleteStruct
   .} = object
 
   WpViewporter {.
-    importc: "struct wp_viewporter", header: "lockme/wayland_shim.h", incompleteStruct
+    importc: "struct wp_viewporter", header: "kleis/wayland_shim.h", incompleteStruct
   .} = object
 
   WpViewport {.
-    importc: "struct wp_viewport", header: "lockme/wayland_shim.h", incompleteStruct
+    importc: "struct wp_viewport", header: "kleis/wayland_shim.h", incompleteStruct
   .} = object
 
   XkbContext {.
@@ -360,265 +360,265 @@ proc wl_registry_destroy(
 
 proc wl_registry_add_listener(
   registry: ptr WlRegistry, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_registry_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_registry_add_listener", header: "kleis/wayland_shim.h".}
 
 proc wl_seat_add_listener(
   seat: ptr WlSeat, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_seat_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_seat_add_listener", header: "kleis/wayland_shim.h".}
 
 proc wl_pointer_add_listener(
   pointer: ptr WlPointer, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_pointer_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_pointer_add_listener", header: "kleis/wayland_shim.h".}
 
 proc wl_keyboard_add_listener(
   keyboard: ptr WlKeyboard, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_keyboard_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_keyboard_add_listener", header: "kleis/wayland_shim.h".}
 
 proc wl_buffer_add_listener(
   buffer: ptr WlBuffer, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_buffer_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_buffer_add_listener", header: "kleis/wayland_shim.h".}
 
 proc ext_session_lock_v1_add_listener(
   lock: ptr ExtSessionLock, listener: pointer, data: pointer
 ): cint {.
-  importc: "lockme_ext_session_lock_v1_add_listener", header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_v1_add_listener", header: "kleis/wayland_shim.h"
 .}
 
 proc ext_session_lock_surface_v1_add_listener(
   surface: ptr ExtSessionLockSurface, listener: pointer, data: pointer
 ): cint {.
-  importc: "lockme_ext_session_lock_surface_v1_add_listener",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_surface_v1_add_listener",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameWlCompositor(): cstring {.
-  importc: "lockme_iface_name_wl_compositor", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_compositor", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameWlOutput(): cstring {.
-  importc: "lockme_iface_name_wl_output", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_output", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameWlSeat(): cstring {.
-  importc: "lockme_iface_name_wl_seat", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_seat", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameWlShm(): cstring {.
-  importc: "lockme_iface_name_wl_shm", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_shm", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameLockManager(): cstring {.
-  importc: "lockme_iface_name_ext_session_lock_manager_v1",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_ext_session_lock_manager_v1",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameViewporter(): cstring {.
-  importc: "lockme_iface_name_wp_viewporter", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wp_viewporter", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNamePixelManager(): cstring {.
-  importc: "lockme_iface_name_wp_single_pixel_buffer_manager_v1",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wp_single_pixel_buffer_manager_v1",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlCompositor(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WlCompositor {.
-  importc: "lockme_registry_bind_wl_compositor", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wl_compositor", header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlOutput(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WlOutput {.
-  importc: "lockme_registry_bind_wl_output", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wl_output", header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlSeat(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WlSeat {.
-  importc: "lockme_registry_bind_wl_seat", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wl_seat", header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlShm(
   registry: ptr WlRegistry, name, version: uint32
-): ptr WlShm {.importc: "lockme_registry_bind_wl_shm", header: "lockme/wayland_shim.h".}
+): ptr WlShm {.importc: "kleis_registry_bind_wl_shm", header: "kleis/wayland_shim.h".}
 
 proc bindLockManager(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr ExtSessionLockManager {.
-  importc: "lockme_registry_bind_ext_session_lock_manager_v1",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_ext_session_lock_manager_v1",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc bindViewporter(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WpViewporter {.
-  importc: "lockme_registry_bind_wp_viewporter", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wp_viewporter", header: "kleis/wayland_shim.h"
 .}
 
 proc bindPixelManager(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WpSinglePixelBufferManager {.
-  importc: "lockme_registry_bind_wp_single_pixel_buffer_manager_v1",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wp_single_pixel_buffer_manager_v1",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc wlCreateSurface(
   compositor: ptr WlCompositor
 ): ptr WlSurface {.
-  importc: "lockme_wl_compositor_create_surface", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_compositor_create_surface", header: "kleis/wayland_shim.h"
 .}
 
 proc wlCompositorDestroy(
   compositor: ptr WlCompositor
-) {.importc: "lockme_wl_compositor_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_compositor_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceDestroy(
   surface: ptr WlSurface
-) {.importc: "lockme_wl_surface_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceAttach(
   surface: ptr WlSurface, buffer: ptr WlBuffer, x, y: int32
-) {.importc: "lockme_wl_surface_attach", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_attach", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceDamageBuffer(
   surface: ptr WlSurface, x, y, width, height: int32
-) {.importc: "lockme_wl_surface_damage_buffer", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_damage_buffer", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceCommit(
   surface: ptr WlSurface
-) {.importc: "lockme_wl_surface_commit", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_commit", header: "kleis/wayland_shim.h".}
 
 proc wlBufferDestroy(
   buffer: ptr WlBuffer
-) {.importc: "lockme_wl_buffer_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_buffer_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlOutputRelease(
   output: ptr WlOutput
-) {.importc: "lockme_wl_output_release", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_output_release", header: "kleis/wayland_shim.h".}
 
 proc wlShmCreatePool(
   shm: ptr WlShm, fd, size: int32
 ): ptr WlShmPool {.
-  importc: "lockme_wl_shm_create_pool", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_shm_create_pool", header: "kleis/wayland_shim.h"
 .}
 
 proc wlShmDestroy(
   shm: ptr WlShm
-) {.importc: "lockme_wl_shm_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_shm_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlShmPoolCreateBuffer(
   pool: ptr WlShmPool, offset, width, height, stride: int32, format: uint32
 ): ptr WlBuffer {.
-  importc: "lockme_wl_shm_pool_create_buffer", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_shm_pool_create_buffer", header: "kleis/wayland_shim.h"
 .}
 
 proc wlShmPoolDestroy(
   pool: ptr WlShmPool
-) {.importc: "lockme_wl_shm_pool_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_shm_pool_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlSeatGetPointer(
   seat: ptr WlSeat
 ): ptr WlPointer {.
-  importc: "lockme_wl_seat_get_pointer", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_seat_get_pointer", header: "kleis/wayland_shim.h"
 .}
 
 proc wlSeatGetKeyboard(
   seat: ptr WlSeat
 ): ptr WlKeyboard {.
-  importc: "lockme_wl_seat_get_keyboard", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_seat_get_keyboard", header: "kleis/wayland_shim.h"
 .}
 
 proc wlSeatRelease(
   seat: ptr WlSeat
-) {.importc: "lockme_wl_seat_release", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_seat_release", header: "kleis/wayland_shim.h".}
 
 proc wlPointerRelease(
   pointer: ptr WlPointer
-) {.importc: "lockme_wl_pointer_release", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_pointer_release", header: "kleis/wayland_shim.h".}
 
 proc wlPointerSetCursor(
   pointer: ptr WlPointer, serial: uint32, surface: ptr WlSurface, x, y: int32
-) {.importc: "lockme_wl_pointer_set_cursor", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_pointer_set_cursor", header: "kleis/wayland_shim.h".}
 
 proc wlKeyboardRelease(
   keyboard: ptr WlKeyboard
-) {.importc: "lockme_wl_keyboard_release", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_keyboard_release", header: "kleis/wayland_shim.h".}
 
 proc lockManagerLock(
   manager: ptr ExtSessionLockManager
 ): ptr ExtSessionLock {.
-  importc: "lockme_ext_session_lock_manager_v1_lock", header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_manager_v1_lock", header: "kleis/wayland_shim.h"
 .}
 
 proc lockManagerDestroy(
   manager: ptr ExtSessionLockManager
 ) {.
-  importc: "lockme_ext_session_lock_manager_v1_destroy", header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_manager_v1_destroy", header: "kleis/wayland_shim.h"
 .}
 
 proc sessionLockDestroy(
   lock: ptr ExtSessionLock
-) {.importc: "lockme_ext_session_lock_v1_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_ext_session_lock_v1_destroy", header: "kleis/wayland_shim.h".}
 
 proc sessionLockUnlockAndDestroy(
   lock: ptr ExtSessionLock
 ) {.
-  importc: "lockme_ext_session_lock_v1_unlock_and_destroy",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_v1_unlock_and_destroy",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc sessionLockGetSurface(
   lock: ptr ExtSessionLock, surface: ptr WlSurface, output: ptr WlOutput
 ): ptr ExtSessionLockSurface {.
-  importc: "lockme_ext_session_lock_v1_get_lock_surface",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_v1_get_lock_surface",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc lockSurfaceDestroy(
   surface: ptr ExtSessionLockSurface
 ) {.
-  importc: "lockme_ext_session_lock_surface_v1_destroy", header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_surface_v1_destroy", header: "kleis/wayland_shim.h"
 .}
 
 proc lockSurfaceAckConfigure(
   surface: ptr ExtSessionLockSurface, serial: uint32
 ) {.
-  importc: "lockme_ext_session_lock_surface_v1_ack_configure",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_ext_session_lock_surface_v1_ack_configure",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc pixelCreateBuffer(
   manager: ptr WpSinglePixelBufferManager, r, g, b, a: uint32
 ): ptr WlBuffer {.
-  importc: "lockme_wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_wp_single_pixel_buffer_manager_v1_create_u32_rgba_buffer",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc pixelManagerDestroy(
   manager: ptr WpSinglePixelBufferManager
 ) {.
-  importc: "lockme_wp_single_pixel_buffer_manager_v1_destroy",
-  header: "lockme/wayland_shim.h"
+  importc: "kleis_wp_single_pixel_buffer_manager_v1_destroy",
+  header: "kleis/wayland_shim.h"
 .}
 
 proc viewporterGetViewport(
   viewporter: ptr WpViewporter, surface: ptr WlSurface
 ): ptr WpViewport {.
-  importc: "lockme_wp_viewporter_get_viewport", header: "lockme/wayland_shim.h"
+  importc: "kleis_wp_viewporter_get_viewport", header: "kleis/wayland_shim.h"
 .}
 
 proc viewporterDestroy(
   viewporter: ptr WpViewporter
-) {.importc: "lockme_wp_viewporter_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wp_viewporter_destroy", header: "kleis/wayland_shim.h".}
 
 proc viewportDestroy(
   viewport: ptr WpViewport
-) {.importc: "lockme_wp_viewport_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wp_viewport_destroy", header: "kleis/wayland_shim.h".}
 
 proc viewportSetDestination(
   viewport: ptr WpViewport, width, height: int32
-) {.importc: "lockme_wp_viewport_set_destination", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wp_viewport_set_destination", header: "kleis/wayland_shim.h".}
 
 proc xkb_context_new(
   flags: cint
@@ -701,14 +701,14 @@ var
   lockSurfaceListener: ExtSessionLockSurfaceListener
 
 proc fatal(message: string) {.noreturn.} =
-  quit("lockme: " & message, 1)
+  quit("kleis: " & message, 1)
 
 proc logEnabled(lock: Lock, level: LogLevel): bool =
   ord(lock.opts.logLevel) >= ord(level)
 
 proc logMessage(lock: Lock, level: LogLevel, message: string) =
   if lock.logEnabled(level):
-    stderr.writeLine("lockme: " & message)
+    stderr.writeLine("kleis: " & message)
 
 proc diagnosticLogPath(): string =
   let stateHome =
@@ -716,7 +716,7 @@ proc diagnosticLogPath(): string =
       getEnv("XDG_STATE_HOME")
     else:
       getEnv("HOME") / ".local" / "state"
-  stateHome / "lockme" / "lockme.log"
+  stateHome / "kleis" / "kleis.log"
 
 proc logDiagnostic(message: string) =
   let path = diagnosticLogPath()
@@ -741,7 +741,7 @@ proc logMatrixFailure(output: Output, message: string) =
   let lock = output.lock
   output.logDiagnostic("matrix warning: " & message)
   if not lock.blankActive or lock.logEnabled(llWarning):
-    stderr.writeLine("lockme: warning: matrix output " & $output.name & ": " & message)
+    stderr.writeLine("kleis: warning: matrix output " & $output.name & ": " & message)
 
 proc matrixSurfaceRenderable(output: Output): bool =
   output.lifecycle == olActive and output.configured and not output.surface.isNil and
@@ -931,7 +931,7 @@ proc createMatrixShmBuffers(output: Output, allowGpu = true) =
 
   for i in 0 ..< output.matrixBuffers.len:
     let buf = addr output.matrixBuffers[i]
-    let fd = memfd_create("lockme-matrix".cstring, 0)
+    let fd = memfd_create("kleis-matrix".cstring, 0)
     if fd < 0:
       output.destroyMatrixBuffers()
       output.logMatrixFailure("memfd_create failed")
@@ -1250,7 +1250,7 @@ proc createSolidPixelBuffer(lock: Lock, rgb: uint32): ptr WlBuffer =
   )
 
 proc createSolidShmBuffer(lock: Lock, rgb: uint32): ptr WlBuffer =
-  let fd = memfd_create("lockme-color".cstring, 0)
+  let fd = memfd_create("kleis-color".cstring, 0)
   if fd < 0:
     fatal("failed to create shm buffer fd")
   if ftruncate(fd, 4) != 0:
@@ -1775,7 +1775,7 @@ proc checkProtocols*(opts: Options) =
   defer:
     lock.deinit()
   lock.checkRequired()
-  echo "lockme: required Wayland protocols are available"
+  echo "kleis: required Wayland protocols are available"
 
 proc applyProcessHardening(opts: Options) =
   ## Process-wide hardening applied at startup. Each step is best-effort:
@@ -1800,7 +1800,7 @@ proc applyProcessHardening(opts: Options) =
       MclCurrent or MclFuture
   if mlockall(mlockFlags) != 0:
     if opts.logLevel == llDebug:
-      stderr.writeLine("lockme: debug: " & mlockallFailureMessage(mlockFlags, errno))
+      stderr.writeLine("kleis: debug: " & mlockallFailureMessage(mlockFlags, errno))
 
 proc applyParentNoNewPrivs() =
   ## Apply after forkAuthChild(). PAM may need setuid helpers such as
@@ -1819,7 +1819,7 @@ proc runLock*(opts: Options) =
   lock.signalFd = makeSignalFd()
   if lock.signalFd < 0:
     stderr.writeLine(
-      "lockme: warning: failed to create signal fd; SIGINT/SIGTERM may not clean up gracefully"
+      "kleis: warning: failed to create signal fd; SIGINT/SIGTERM may not clean up gracefully"
     )
   applyParentNoNewPrivs()
   lock.createBuffers()

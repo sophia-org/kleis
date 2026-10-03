@@ -1,9 +1,9 @@
 import std/os
 
-import lockme/cli
-import lockme/config
-import lockme/preview
-import lockme/wayland
+import kleis/cli
+import kleis/config
+import kleis/preview
+import kleis/wayland
 
 when isMainModule:
   try:
@@ -24,8 +24,8 @@ when isMainModule:
     else:
       runLock(opts)
   except ValueError as e:
-    stderr.writeLine("lockme: " & e.msg)
+    stderr.writeLine("kleis: " & e.msg)
     quit(1)
   except OSError as e:
-    stderr.writeLine("lockme: " & e.msg)
+    stderr.writeLine("kleis: " & e.msg)
     quit(1)

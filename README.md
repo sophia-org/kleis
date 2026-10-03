@@ -1,11 +1,13 @@
-# lockme
+# kleis
 
 A hardened, minimalist screen locker for Wayland compositors that
 implement `ext-session-lock-v1`.
 
+kleis began as `lockme`, a Wayland locker; it is the same code under a new name.
+
 ![Matrix rain lock screen](matrix_rain.png?v=20260511)
 
-`lockme` aims at one thing: keep a typed password out of every place
+`kleis` aims at one thing: keep a typed password out of every place
 the kernel and userspace would otherwise let it leak.
 
 The password buffer is page-aligned, `mlock`'d, marked
@@ -35,7 +37,7 @@ new one from scratch &mdash; and because I dig Nim.
 
 ## Install build dependencies
 
-`lockme` needs Nim/Nimble, a C toolchain, `pkg-config`, the Nimble package
+`kleis` needs Nim/Nimble, a C toolchain, `pkg-config`, the Nimble package
 `nimkdl >= 2.1.0`, and development headers for Wayland, Wayland EGL, EGL,
 OpenGL ES 3, xkbcommon, and PAM. The OpenGL ES link dependency is discovered
 through the standard `glesv2` pkg-config module, even though the renderer
@@ -111,15 +113,15 @@ left to `nimble regenFont`.
 nimble deploy
 ```
 
-This builds an optimized release, installs `lockme` to `~/.local/bin/lockme`,
-and installs the PAM service file to `/etc/pam.d/lockme`. The binary install
+This builds an optimized release, installs `kleis` to `~/.local/bin/kleis`,
+and installs the PAM service file to `/etc/pam.d/kleis`. The binary install
 runs as your user; the PAM install uses `sudo` because `/etc/pam.d` is
 root-owned.
 
 ## Check compositor compatibility
 
 ```sh
-lockme --check-protocols
+kleis --check-protocols
 ```
 
 At runtime, the compositor must advertise:
@@ -134,13 +136,13 @@ buffers when available.
 
 ## Wayland protocol sources
 
-`lockme` uses `libwayland-client` directly through a small C shim and
+`kleis` uses `libwayland-client` directly through a small C shim and
 generated protocol stubs. It does not depend on a third-party Wayland wrapper
 library; this keeps the C/Nim boundary explicit and leaves protocol handling
 on the standard Wayland C stack.
 
-The generated protocol files are checked in under `src/lockme/protocols`.
-Their XML sources are vendored in `src/lockme/protocols/xml`:
+The generated protocol files are checked in under `src/kleis/protocols`.
+Their XML sources are vendored in `src/kleis/protocols/xml`:
 
 - `ext-session-lock-v1` from `wayland-protocols/staging`
 - `single-pixel-buffer-v1` from `wayland-protocols/staging`
@@ -161,10 +163,10 @@ generated C/H changes together. Set `WAYLAND_SCANNER=/path/to/wayland-scanner` t
 ## Run
 
 ```sh
-lockme
+kleis
 ```
 
-Plain `lockme` shows Matrix rain while idle and ignores the Enter key on an
+Plain `kleis` shows Matrix rain while idle and ignores the Enter key on an
 empty password buffer.
 
 ### Battery / power
@@ -175,11 +177,11 @@ unattended locked machine. Setting an idle timeout blanks the screen after the
 specified number of seconds, letting the system reach low-power states:
 
 ```sh
-lockme --idle-timeout 60   # blank after 60 s of inactivity
+kleis --idle-timeout 60   # blank after 60 s of inactivity
 ```
 
 The next keypress wakes the screen back to matrix. You can also set this in
-`~/.config/lockme/config.kdl` so you never forget it:
+`~/.config/kleis/config.kdl` so you never forget it:
 
 ```kdl
 idle-timeout 60
@@ -192,24 +194,24 @@ idle-timeout 60
 `--no-gpu` forces the CPU renderer and removes EGL from the process (also
 useful on systems with unreliable GPU drivers).
 
-For development only, `lockme --dev-mode` makes `Esc` unlock and exit cleanly
+For development only, `kleis --dev-mode` makes `Esc` unlock and exit cleanly
 without talking to PAM. This is intentionally insecure and should not be used
 for a real screen lock, but it provides a compositor-safe escape hatch while
-testing lockme itself.
+testing kleis itself.
 
 For screenshots while developing the Matrix renderer, use:
 
 ```sh
-lockme --dev-mode --dev-window
+kleis --dev-mode --dev-window
 ```
 
 This opens the Matrix rain in a normal Wayland window and does not lock the
 session or start PAM.
 
 Matrix rain is rendered through a Sokol/EGL/GLES path when available. The glyph
-atlas is generated from lockme's built-in high-resolution alpha glyph source,
+atlas is generated from kleis's built-in high-resolution alpha glyph source,
 which is rasterized from the CNTR Koine Greek TrueType font; if GPU setup fails,
-lockme warns and falls back to the existing software renderer. The GPU rain
+kleis warns and falls back to the existing software renderer. The GPU rain
 pipeline adapts MIT-licensed shader logic from Rezmason's Matrix rain renderer.
 While locked, `Alt-B` toggles between Matrix rain and a blank screen.
 
@@ -231,23 +233,23 @@ Repeating `--input-color` defines a custom palette. The first occurrence
 replaces the built-in palette; later occurrences append:
 
 ```sh
-lockme --input-color 0x111111 --input-color 0x222222 --input-color 0x333333
+kleis --input-color 0x111111 --input-color 0x222222 --input-color 0x333333
 ```
 
 ## Configuration
 
-`lockme` reads an optional KDL 2.0 configuration file. The discovery order is:
+`kleis` reads an optional KDL 2.0 configuration file. The discovery order is:
 
 1. `--config <path>` (must exist if specified),
-2. `$XDG_CONFIG_HOME/lockme/config.kdl` (default `~/.config/lockme/config.kdl`),
-3. each `$XDG_CONFIG_DIRS/lockme/config.kdl` in order (default `/etc/xdg`).
+2. `$XDG_CONFIG_HOME/kleis/config.kdl` (default `~/.config/kleis/config.kdl`),
+3. each `$XDG_CONFIG_DIRS/kleis/config.kdl` in order (default `/etc/xdg`).
 
 `--no-config` disables the search entirely. CLI flags always win over values
 set in the config file. Parse and validation errors abort startup with a
 diagnostic on stderr.
 
 A documented template lives at `examples/config.kdl` and is dropped into
-`~/.config/lockme/config.kdl` by `nimble installBin`/`nimble deploy` only if
+`~/.config/kleis/config.kdl` by `nimble installBin`/`nimble deploy` only if
 that file does not already exist. Keys absent from the config always take the
 built-in default, so an existing config never breaks when new options are
 added; diff your file against `examples/config.kdl` after pulling updates to
@@ -275,7 +277,7 @@ Run `nimble sizecheck` to print the size of your build.
 
 ## Platform requirements
 
-`lockme` is Linux-only. It relies on the following Linux-specific facilities
+`kleis` is Linux-only. It relies on the following Linux-specific facilities
 to harden the password buffer and the auth child:
 
 - `mlock(2)` and `madvise(MADV_DONTDUMP)` on a page-aligned password buffer,
@@ -299,7 +301,7 @@ to harden the password buffer and the auth child:
 
 ## Security
 
-`lockme` mirrors waylock's privilege-separation model: the parent process
+`kleis` mirrors waylock's privilege-separation model: the parent process
 holds the Wayland connection and renders the lock surface, while a forked
 child performs PAM authentication over a length-prefixed pipe. The
 password buffer:
@@ -330,8 +332,8 @@ checks.
 
 ## PAM stack
 
-`lockme` performs authentication through PAM. The shipped default
-`pam.d/lockme` is a minimal, auditable, distribution-independent chain:
+`kleis` performs authentication through PAM. The shipped default
+`pam.d/kleis` is a minimal, auditable, distribution-independent chain:
 
 ```
 auth        optional      pam_faildelay.so delay=2000000
@@ -354,20 +356,20 @@ file instead:
 ```sh
 nimble installPamFull
 # or, without nimble:
-sudo install -m 0644 pam.d/lockme.full /etc/pam.d/lockme
+sudo install -m 0644 pam.d/kleis.full /etc/pam.d/kleis
 ```
 
 The full file contains a single line, `auth include system-auth`, which
 delegates authentication to the distribution's `system-auth` chain.
 This is the same approach `waylock` and most other screen lockers ship
-with. The trade-off is that `lockme`'s effective auth surface becomes
+with. The trade-off is that `kleis`'s effective auth surface becomes
 whatever `system-auth` says it is. To audit it, read
 `/etc/pam.d/system-auth`; edits there (for example a debugging
 `auth sufficient pam_permit.so` line, or a `pam_succeed_if` clause that
-bypasses checks for a group) silently affect `lockme` as well, and
-`lockme` cannot defend against this.
+bypasses checks for a group) silently affect `kleis` as well, and
+`kleis` cannot defend against this.
 
-For PAM debugging, run `./lockme --log-level debug --blank --dev-mode` from
+For PAM debugging, run `./kleis --log-level debug --blank --dev-mode` from
 a terminal. Debug logging records PAM status codes and messages only; it
 does not log password contents, password length, or prompts. In `--dev-mode`,
 `Esc` exits without asking PAM, which keeps manual auth tests recoverable.

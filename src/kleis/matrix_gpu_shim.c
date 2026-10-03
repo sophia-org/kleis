@@ -23,9 +23,9 @@ typedef struct {
 	sg_image image;
 	sg_view texture_view;
 	sg_view attachment_view;
-} lockme_state_target;
+} kleis_state_target;
 
-struct lockme_matrix_gpu {
+struct kleis_matrix_gpu {
 	struct wl_egl_window *window;
 	EGLSurface surface;
 	int32_t width;
@@ -38,20 +38,20 @@ struct lockme_matrix_gpu {
 	uint32_t frame_count;
 	int current_raindrop;
 	int current_symbol;
-	lockme_state_target raindrop[2];
-	lockme_state_target symbol[2];
+	kleis_state_target raindrop[2];
+	kleis_state_target symbol[2];
 };
 
 typedef struct {
 	float grid_time[4];
 	float timing[4];
-} lockme_state_params;
+} kleis_state_params;
 
 typedef struct {
 	float surface_cell[4];
 	float atlas_time[4];
 	float grid_params[4];
-} lockme_final_params;
+} kleis_final_params;
 
 static EGLDisplay g_display = EGL_NO_DISPLAY;
 static EGLConfig g_config = NULL;
@@ -209,7 +209,7 @@ static void set_error(const char *message) {
 }
 
 static int32_t forced_render_fail_after(void) {
-	const char *raw = getenv("LOCKME_MATRIX_GPU_FAIL_AFTER");
+	const char *raw = getenv("KLEIS_MATRIX_GPU_FAIL_AFTER");
 	if (!raw || raw[0] == '\0') {
 		return -1;
 	}
@@ -306,7 +306,7 @@ static void destroy_global_resources(void) {
 	}
 }
 
-static void destroy_state_target(lockme_state_target *target) {
+static void destroy_state_target(kleis_state_target *target) {
 	if (target->attachment_view.id != SG_INVALID_ID) {
 		sg_destroy_view(target->attachment_view);
 	}
@@ -316,10 +316,10 @@ static void destroy_state_target(lockme_state_target *target) {
 	if (target->image.id != SG_INVALID_ID) {
 		sg_destroy_image(target->image);
 	}
-	*target = (lockme_state_target){0};
+	*target = (kleis_state_target){0};
 }
 
-static void destroy_state(struct lockme_matrix_gpu *gpu) {
+static void destroy_state(struct kleis_matrix_gpu *gpu) {
 	for (int i = 0; i < 2; i++) {
 		destroy_state_target(&gpu->raindrop[i]);
 		destroy_state_target(&gpu->symbol[i]);
@@ -331,8 +331,8 @@ static void destroy_state(struct lockme_matrix_gpu *gpu) {
 	gpu->current_symbol = 0;
 }
 
-static lockme_state_target make_state_target(int32_t width, int32_t height, const char *label) {
-	lockme_state_target target = {0};
+static kleis_state_target make_state_target(int32_t width, int32_t height, const char *label) {
+	kleis_state_target target = {0};
 	target.image = sg_make_image(&(sg_image_desc){
 		.usage = {
 			.color_attachment = true,
@@ -359,13 +359,13 @@ static lockme_state_target make_state_target(int32_t width, int32_t height, cons
 	return target;
 }
 
-static bool state_target_valid(const lockme_state_target *target) {
+static bool state_target_valid(const kleis_state_target *target) {
 	return sg_query_image_state(target->image) == SG_RESOURCESTATE_VALID &&
 		sg_query_view_state(target->texture_view) == SG_RESOURCESTATE_VALID &&
 		sg_query_view_state(target->attachment_view) == SG_RESOURCESTATE_VALID;
 }
 
-static void clear_state_target(lockme_state_target *target) {
+static void clear_state_target(kleis_state_target *target) {
 	sg_begin_pass(&(sg_pass){
 		.action = {
 			.colors = {
@@ -383,7 +383,7 @@ static void clear_state_target(lockme_state_target *target) {
 	sg_end_pass();
 }
 
-static bool ensure_state(struct lockme_matrix_gpu *gpu) {
+static bool ensure_state(struct kleis_matrix_gpu *gpu) {
 	int32_t grid_width = gpu->width / gpu->cell_width;
 	int32_t grid_height = gpu->height / gpu->cell_height;
 	if (grid_width < 1) {
@@ -473,7 +473,7 @@ static bool init_egl(struct wl_display *display) {
 	return true;
 }
 
-static bool make_current(struct lockme_matrix_gpu *gpu) {
+static bool make_current(struct kleis_matrix_gpu *gpu) {
 	if (!eglMakeCurrent(g_display, gpu->surface, gpu->surface, g_context)) {
 		set_error("eglMakeCurrent failed");
 		return false;
@@ -493,7 +493,7 @@ static sg_shader_desc raindrop_shader_desc(void) {
 	desc.vertex_func.source = fullscreen_vertex_source;
 	desc.fragment_func.source = raindrop_fragment_source;
 	desc.uniform_blocks[0].stage = SG_SHADERSTAGE_FRAGMENT;
-	desc.uniform_blocks[0].size = sizeof(lockme_state_params);
+	desc.uniform_blocks[0].size = sizeof(kleis_state_params);
 	desc.uniform_blocks[0].layout = SG_UNIFORMLAYOUT_STD140;
 	desc.uniform_blocks[0].glsl_uniforms[0] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "grid_time" };
 	desc.uniform_blocks[0].glsl_uniforms[1] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "timing" };
@@ -515,7 +515,7 @@ static sg_shader_desc symbol_shader_desc(void) {
 	desc.vertex_func.source = fullscreen_vertex_source;
 	desc.fragment_func.source = symbol_fragment_source;
 	desc.uniform_blocks[0].stage = SG_SHADERSTAGE_FRAGMENT;
-	desc.uniform_blocks[0].size = sizeof(lockme_state_params);
+	desc.uniform_blocks[0].size = sizeof(kleis_state_params);
 	desc.uniform_blocks[0].layout = SG_UNIFORMLAYOUT_STD140;
 	desc.uniform_blocks[0].glsl_uniforms[0] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "grid_time" };
 	desc.uniform_blocks[0].glsl_uniforms[1] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "timing" };
@@ -544,7 +544,7 @@ static sg_shader_desc final_shader_desc(void) {
 	desc.vertex_func.source = fullscreen_vertex_source;
 	desc.fragment_func.source = final_fragment_source;
 	desc.uniform_blocks[0].stage = SG_SHADERSTAGE_FRAGMENT;
-	desc.uniform_blocks[0].size = sizeof(lockme_final_params);
+	desc.uniform_blocks[0].size = sizeof(kleis_final_params);
 	desc.uniform_blocks[0].layout = SG_UNIFORMLAYOUT_STD140;
 	desc.uniform_blocks[0].glsl_uniforms[0] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "surface_cell" };
 	desc.uniform_blocks[0].glsl_uniforms[1] = (sg_glsl_shader_uniform){ .type = SG_UNIFORMTYPE_FLOAT4, .array_count = 1, .glsl_name = "atlas_time" };
@@ -672,7 +672,7 @@ static bool init_sokol(const uint8_t *atlas_pixels, int32_t atlas_width, int32_t
 	return true;
 }
 
-struct lockme_matrix_gpu *lockme_matrix_gpu_create(
+struct kleis_matrix_gpu *kleis_matrix_gpu_create(
 	struct wl_display *display,
 	struct wl_surface *surface,
 	int32_t width,
@@ -696,7 +696,7 @@ struct lockme_matrix_gpu *lockme_matrix_gpu_create(
 		return NULL;
 	}
 
-	struct lockme_matrix_gpu *gpu = calloc(1, sizeof(*gpu));
+	struct kleis_matrix_gpu *gpu = calloc(1, sizeof(*gpu));
 	if (!gpu) {
 		set_error("calloc failed");
 		return NULL;
@@ -730,7 +730,7 @@ struct lockme_matrix_gpu *lockme_matrix_gpu_create(
 	return gpu;
 }
 
-int32_t lockme_matrix_gpu_resize(struct lockme_matrix_gpu *gpu, int32_t width, int32_t height) {
+int32_t kleis_matrix_gpu_resize(struct kleis_matrix_gpu *gpu, int32_t width, int32_t height) {
 	if (!gpu || width <= 0 || height <= 0) {
 		set_error("invalid matrix gpu resize arguments");
 		return 0;
@@ -744,7 +744,7 @@ int32_t lockme_matrix_gpu_resize(struct lockme_matrix_gpu *gpu, int32_t width, i
 	return 1;
 }
 
-static void render_state_pass(sg_pipeline pipeline, lockme_state_target *target, sg_bindings bindings, lockme_state_params *params, const char *label) {
+static void render_state_pass(sg_pipeline pipeline, kleis_state_target *target, sg_bindings bindings, kleis_state_params *params, const char *label) {
 	sg_begin_pass(&(sg_pass){
 		.action = {
 			.colors = {
@@ -765,8 +765,8 @@ static void render_state_pass(sg_pipeline pipeline, lockme_state_target *target,
 	sg_end_pass();
 }
 
-int32_t lockme_matrix_gpu_render(
-	struct lockme_matrix_gpu *gpu,
+int32_t kleis_matrix_gpu_render(
+	struct kleis_matrix_gpu *gpu,
 	double time_seconds,
 	float fall_speed,
 	float cycle_speed,
@@ -789,7 +789,7 @@ int32_t lockme_matrix_gpu_render(
 	}
 
 	sg_reset_state_cache();
-	lockme_state_params state_params = {
+	kleis_state_params state_params = {
 		.grid_time = { (float)gpu->grid_width, (float)gpu->grid_height, (float)time_seconds, (float)gpu->frame_count },
 		.timing = { fall_speed, cycle_speed, raindrop_length, brightness_decay },
 	};
@@ -806,7 +806,7 @@ int32_t lockme_matrix_gpu_render(
 		"matrix-raindrop-pass");
 	gpu->current_raindrop = raindrop_dst;
 
-	lockme_state_params symbol_params = {
+	kleis_state_params symbol_params = {
 		.grid_time = { (float)gpu->grid_width, (float)gpu->grid_height, (float)time_seconds, (float)gpu->frame_count },
 		.timing = { fall_speed, cycle_speed, raindrop_length, (float)gpu->glyph_count },
 	};
@@ -826,7 +826,7 @@ int32_t lockme_matrix_gpu_render(
 		"matrix-symbol-pass");
 	gpu->current_symbol = symbol_dst;
 
-	lockme_final_params final_params = {
+	kleis_final_params final_params = {
 		.surface_cell = { (float)gpu->width, (float)gpu->height, (float)gpu->cell_width, (float)gpu->cell_height },
 		.atlas_time = { (float)g_atlas_width, (float)g_atlas_height, (float)gpu->glyph_count, (float)time_seconds },
 		.grid_params = { (float)gpu->grid_width, (float)gpu->grid_height, 0.0f, 0.0f },
@@ -897,7 +897,7 @@ static void shutdown_global_gpu_state(void) {
 	g_atlas_glyph_count = 0;
 }
 
-void lockme_matrix_gpu_destroy(struct lockme_matrix_gpu *gpu) {
+void kleis_matrix_gpu_destroy(struct kleis_matrix_gpu *gpu) {
 	if (!gpu) {
 		return;
 	}
@@ -916,11 +916,11 @@ void lockme_matrix_gpu_destroy(struct lockme_matrix_gpu *gpu) {
 	}
 }
 
-void lockme_matrix_gpu_shutdown(void) {
+void kleis_matrix_gpu_shutdown(void) {
 	shutdown_global_gpu_state();
 }
 
-const char *lockme_matrix_gpu_last_error(void) {
+const char *kleis_matrix_gpu_last_error(void) {
 	if (g_last_error[0] == '\0') {
 		return "unknown matrix gpu error";
 	}

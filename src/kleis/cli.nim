@@ -62,7 +62,7 @@ type
     matrixBrightnessDecay*: float
     setFlags*: set[CliFlag]
 
-const Usage* = """usage: lockme [options]
+const Usage* = """usage: kleis [options]
 
   -h, --help                       Print this help message and exit.
   --version                        Print the version number and exit.
@@ -89,7 +89,7 @@ const Usage* = """usage: lockme [options]
   --input-color 0xRRGGBB           Add an input-state color. Repeatable; the
                                    first occurrence replaces the default
                                    palette, subsequent occurrences append.
-                                   lockme cycles through these on each
+                                   kleis cycles through these on each
                                    keypress.
   --fail-color 0xRRGGBB            Set the auth failure color.
 """

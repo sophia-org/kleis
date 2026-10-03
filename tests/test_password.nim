@@ -1,6 +1,6 @@
 import std/unittest
 
-import lockme/password
+import kleis/password
 
 proc s(b: seq[byte]): string =
   result = newString(b.len)

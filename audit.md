@@ -2,7 +2,7 @@
 
 **Date:** May 2, 2026
 
-This document records security and performance review notes for `lockme` on
+This document records security and performance review notes for `kleis` on
 `main`, with the latest reviewed commit at the time of writing:
 
 ```text
@@ -78,7 +78,7 @@ in the config file, which forces the CPU renderer without requiring a separate
 blank-only invocation.
 
 **Compositor trust dependency.** `ext-session-lock-v1` guarantees that if
-`lockme` exits without calling `unlock_and_destroy`, the compositor keeps the
+`kleis` exits without calling `unlock_and_destroy`, the compositor keeps the
 screen blacked out. The locker's lock integrity in the crash case therefore
 depends on the compositor implementing this guarantee correctly. A SIGSEGV in
 the C shim (EGL, Sokol, or the GPU driver) would kill the whole process, and
@@ -91,11 +91,11 @@ users who want to remove this dependency.
 symbol ping-pong buffers) use `SG_LOADACTION_CLEAR` on first use, so they are
 zeroed at the Sokol level. GPU drivers are required to zero-initialize memory
 across security context boundaries, but driver bugs in this area are a
-documented vulnerability class. This risk is not specific to `lockme` and
+documented vulnerability class. This risk is not specific to `kleis` and
 affects all EGL-using compositing clients.
 
 **EGL/driver attack surface.** The GPU renderer introduces EGL and the Mesa
-driver stack as additional code in the process. `lockme` does not run
+driver stack as additional code in the process. `kleis` does not run
 privileged, so the worst case from a driver bug is a process crash (handled
 by the compositor, per the dependency above) rather than privilege escalation.
 
@@ -114,8 +114,8 @@ buffer and PAM boundary:
 
 Remaining caveats are operational rather than active findings:
 
-- `lockme` has not had broad third-party review or long distro field exposure.
+- `kleis` has not had broad third-party review or long distro field exposure.
 - The GPU Matrix renderer and C shims remain the largest native/FFI surface.
-- PAM behavior still depends on the installed `/etc/pam.d/lockme` file.
-- `pam.d/lockme.full` deliberately opts into the broader distribution
+- PAM behavior still depends on the installed `/etc/pam.d/kleis` file.
+- `pam.d/kleis.full` deliberately opts into the broader distribution
   `system-auth` policy and should be audited separately by users who install it.

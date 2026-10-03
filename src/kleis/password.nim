@@ -48,7 +48,7 @@ proc pageSize(): int =
   int(v)
 
 proc fail(msg: string) {.noreturn.} =
-  quit("lockme: " & msg, 1)
+  quit("kleis: " & msg, 1)
 
 proc initPasswordBuffer*(): PasswordBuffer =
   let page = pageSize()
@@ -80,12 +80,12 @@ proc initPasswordBuffer*(): PasswordBuffer =
       if errno != EAGAIN:
         # Non-fatal: kernel may not support DONTDUMP; mlock still applied.
         stderr.writeLine(
-          "lockme: warning: madvise(MADV_DONTDUMP) failed; password may be included in core dumps"
+          "kleis: warning: madvise(MADV_DONTDUMP) failed; password may be included in core dumps"
         )
         break dontdumpBlock
       if attempts >= 10:
         stderr.writeLine(
-          "lockme: warning: madvise(MADV_DONTDUMP) repeatedly returned EAGAIN"
+          "kleis: warning: madvise(MADV_DONTDUMP) repeatedly returned EAGAIN"
         )
         break dontdumpBlock
       inc attempts

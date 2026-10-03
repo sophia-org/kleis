@@ -1,6 +1,6 @@
 import std/[options, unittest]
 
-import lockme/cli
+import kleis/cli
 
 suite "cli":
   test "default colors":
@@ -81,8 +81,8 @@ suite "cli":
       discard parseOptions(@["--ready-fd", "9999999999"])
 
   test "--config sets configPath":
-    let opts = parseOptions(@["--config", "/tmp/lockme.kdl"])
-    check opts.configPath == some("/tmp/lockme.kdl")
+    let opts = parseOptions(@["--config", "/tmp/kleis.kdl"])
+    check opts.configPath == some("/tmp/kleis.kdl")
     check cfConfigPath in opts.setFlags
 
   test "--no-config sets noConfig":

@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 scanner="${WAYLAND_SCANNER:-wayland-scanner}"
-protocol_dir="src/lockme/protocols"
+protocol_dir="src/kleis/protocols"
 xml_dir="$protocol_dir/xml"
 
 generate() {

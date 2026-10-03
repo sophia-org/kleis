@@ -2,7 +2,7 @@
 /.nimcache/
 /nimcache/
 /nimclipboard/
-/lockme
+/kleis
 /tests/test_cli
 /tests/test_config
 /tests/test_matrix

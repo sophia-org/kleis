@@ -9,7 +9,7 @@ The font is copyright 2012-2023 Alan Bunning and is released under the
 Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA
 4.0). See `LICENSE.md` for the license text.
 
-`scripts/generate-cntr-font.py` rasterizes this font into lockme's built-in
+`scripts/generate-cntr-font.py` rasterizes this font into kleis's built-in
 Matrix glyph alpha data. The generated glyph data is derived from this font and
-is therefore distributed under CC BY-SA 4.0 terms; lockme's source code remains
+is therefore distributed under CC BY-SA 4.0 terms; kleis's source code remains
 MIT-licensed.

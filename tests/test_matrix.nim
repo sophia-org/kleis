@@ -1,6 +1,6 @@
 import std/unittest
 
-import lockme/[font64x128, matrix, matrix_render]
+import kleis/[font64x128, matrix, matrix_render]
 
 proc glyphCell(atlas: MatrixGlyphAtlas, glyphIdx: int): seq[uint8] =
   result = newSeq[uint8](atlas.cellWidth * atlas.cellHeight)

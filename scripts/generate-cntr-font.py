@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate lockme's built-in Matrix glyph alpha source from CNTR KoineGreek."""
+"""Generate kleis's built-in Matrix glyph alpha source from CNTR KoineGreek."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FONT = ROOT / "third_party" / "cntr-font" / "KoineGreek.ttf"
-DEFAULT_OUT = ROOT / "src" / "lockme" / "font64x128.nim"
+DEFAULT_OUT = ROOT / "src" / "kleis" / "font64x128.nim"
 
 GLYPHS = [
     "\u03b1", "\u03b2", "\u03b3", "\u03b4", "\u03b5", "\u03b6",
@@ -109,7 +109,7 @@ def generate(font_path: Path, out_path: Path) -> None:
 # KoineGreek.ttf is copyright 2012-2023 Alan Bunning / Center for New
 # Testament Restoration and is distributed under CC BY-SA 4.0. The generated
 # glyph alpha data below is derived from that font and is distributed under the
-# same license terms. lockme source code remains MIT-licensed.
+# same license terms. kleis source code remains MIT-licensed.
 
 const
   HighResGlyphWidth* = {WIDTH}

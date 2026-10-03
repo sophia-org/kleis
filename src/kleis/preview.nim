@@ -15,7 +15,7 @@ when PkgConfigCheck.exitCode != 0:
       "missing system dependencies: install pkg-config plus development packages for wayland-client"
   .}
 
-{.passC: "-Isrc -Isrc/lockme " & gorge("pkg-config --cflags " & PkgConfigDeps).}
+{.passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & PkgConfigDeps).}
 {.compile: "protocols/xdg-shell-protocol.c".}
 {.passL: gorge("pkg-config --libs " & PkgConfigDeps).}
 
@@ -63,15 +63,15 @@ type
   WlArray {.importc: "struct wl_array", header: "<wayland-util.h>", incompleteStruct.} = object
 
   XdgWmBase {.
-    importc: "struct xdg_wm_base", header: "lockme/wayland_shim.h", incompleteStruct
+    importc: "struct xdg_wm_base", header: "kleis/wayland_shim.h", incompleteStruct
   .} = object
 
   XdgSurface {.
-    importc: "struct xdg_surface", header: "lockme/wayland_shim.h", incompleteStruct
+    importc: "struct xdg_surface", header: "kleis/wayland_shim.h", incompleteStruct
   .} = object
 
   XdgToplevel {.
-    importc: "struct xdg_toplevel", header: "lockme/wayland_shim.h", incompleteStruct
+    importc: "struct xdg_toplevel", header: "kleis/wayland_shim.h", incompleteStruct
   .} = object
 
   WlRegistryListener {.bycopy.} = object
@@ -186,149 +186,149 @@ proc wl_registry_destroy(
 
 proc wl_registry_add_listener(
   registry: ptr WlRegistry, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_registry_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_registry_add_listener", header: "kleis/wayland_shim.h".}
 
 proc wl_buffer_add_listener(
   buffer: ptr WlBuffer, listener: pointer, data: pointer
-): cint {.importc: "lockme_wl_buffer_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_wl_buffer_add_listener", header: "kleis/wayland_shim.h".}
 
 proc ifaceNameWlCompositor(): cstring {.
-  importc: "lockme_iface_name_wl_compositor", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_compositor", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameWlShm(): cstring {.
-  importc: "lockme_iface_name_wl_shm", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_wl_shm", header: "kleis/wayland_shim.h"
 .}
 
 proc ifaceNameXdgWmBase(): cstring {.
-  importc: "lockme_iface_name_xdg_wm_base", header: "lockme/wayland_shim.h"
+  importc: "kleis_iface_name_xdg_wm_base", header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlCompositor(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr WlCompositor {.
-  importc: "lockme_registry_bind_wl_compositor", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_wl_compositor", header: "kleis/wayland_shim.h"
 .}
 
 proc bindWlShm(
   registry: ptr WlRegistry, name, version: uint32
-): ptr WlShm {.importc: "lockme_registry_bind_wl_shm", header: "lockme/wayland_shim.h".}
+): ptr WlShm {.importc: "kleis_registry_bind_wl_shm", header: "kleis/wayland_shim.h".}
 
 proc bindXdgWmBase(
   registry: ptr WlRegistry, name, version: uint32
 ): ptr XdgWmBase {.
-  importc: "lockme_registry_bind_xdg_wm_base", header: "lockme/wayland_shim.h"
+  importc: "kleis_registry_bind_xdg_wm_base", header: "kleis/wayland_shim.h"
 .}
 
 proc wlCreateSurface(
   compositor: ptr WlCompositor
 ): ptr WlSurface {.
-  importc: "lockme_wl_compositor_create_surface", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_compositor_create_surface", header: "kleis/wayland_shim.h"
 .}
 
 proc wlCompositorDestroy(
   compositor: ptr WlCompositor
-) {.importc: "lockme_wl_compositor_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_compositor_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceDestroy(
   surface: ptr WlSurface
-) {.importc: "lockme_wl_surface_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceAttach(
   surface: ptr WlSurface, buffer: ptr WlBuffer, x, y: int32
-) {.importc: "lockme_wl_surface_attach", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_attach", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceDamageBuffer(
   surface: ptr WlSurface, x, y, width, height: int32
-) {.importc: "lockme_wl_surface_damage_buffer", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_damage_buffer", header: "kleis/wayland_shim.h".}
 
 proc wlSurfaceCommit(
   surface: ptr WlSurface
-) {.importc: "lockme_wl_surface_commit", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_surface_commit", header: "kleis/wayland_shim.h".}
 
 proc wlBufferDestroy(
   buffer: ptr WlBuffer
-) {.importc: "lockme_wl_buffer_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_buffer_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlShmCreatePool(
   shm: ptr WlShm, fd, size: int32
 ): ptr WlShmPool {.
-  importc: "lockme_wl_shm_create_pool", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_shm_create_pool", header: "kleis/wayland_shim.h"
 .}
 
 proc wlShmDestroy(
   shm: ptr WlShm
-) {.importc: "lockme_wl_shm_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_shm_destroy", header: "kleis/wayland_shim.h".}
 
 proc wlShmPoolCreateBuffer(
   pool: ptr WlShmPool, offset, width, height, stride: int32, format: uint32
 ): ptr WlBuffer {.
-  importc: "lockme_wl_shm_pool_create_buffer", header: "lockme/wayland_shim.h"
+  importc: "kleis_wl_shm_pool_create_buffer", header: "kleis/wayland_shim.h"
 .}
 
 proc wlShmPoolDestroy(
   pool: ptr WlShmPool
-) {.importc: "lockme_wl_shm_pool_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_wl_shm_pool_destroy", header: "kleis/wayland_shim.h".}
 
 proc xdgWmBaseAddListener(
   wmBase: ptr XdgWmBase, listener: pointer, data: pointer
-): cint {.importc: "lockme_xdg_wm_base_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_xdg_wm_base_add_listener", header: "kleis/wayland_shim.h".}
 
 proc xdgSurfaceAddListener(
   surface: ptr XdgSurface, listener: pointer, data: pointer
-): cint {.importc: "lockme_xdg_surface_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_xdg_surface_add_listener", header: "kleis/wayland_shim.h".}
 
 proc xdgToplevelAddListener(
   toplevel: ptr XdgToplevel, listener: pointer, data: pointer
-): cint {.importc: "lockme_xdg_toplevel_add_listener", header: "lockme/wayland_shim.h".}
+): cint {.importc: "kleis_xdg_toplevel_add_listener", header: "kleis/wayland_shim.h".}
 
 proc xdgWmBaseDestroy(
   wmBase: ptr XdgWmBase
-) {.importc: "lockme_xdg_wm_base_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_wm_base_destroy", header: "kleis/wayland_shim.h".}
 
 proc xdgWmBasePong(
   wmBase: ptr XdgWmBase, serial: uint32
-) {.importc: "lockme_xdg_wm_base_pong", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_wm_base_pong", header: "kleis/wayland_shim.h".}
 
 proc xdgWmBaseGetXdgSurface(
   wmBase: ptr XdgWmBase, surface: ptr WlSurface
 ): ptr XdgSurface {.
-  importc: "lockme_xdg_wm_base_get_xdg_surface", header: "lockme/wayland_shim.h"
+  importc: "kleis_xdg_wm_base_get_xdg_surface", header: "kleis/wayland_shim.h"
 .}
 
 proc xdgSurfaceDestroy(
   surface: ptr XdgSurface
-) {.importc: "lockme_xdg_surface_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_surface_destroy", header: "kleis/wayland_shim.h".}
 
 proc xdgSurfaceAckConfigure(
   surface: ptr XdgSurface, serial: uint32
-) {.importc: "lockme_xdg_surface_ack_configure", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_surface_ack_configure", header: "kleis/wayland_shim.h".}
 
 proc xdgSurfaceSetWindowGeometry(
   surface: ptr XdgSurface, x, y, width, height: int32
-) {.importc: "lockme_xdg_surface_set_window_geometry", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_surface_set_window_geometry", header: "kleis/wayland_shim.h".}
 
 proc xdgSurfaceGetToplevel(
   surface: ptr XdgSurface
 ): ptr XdgToplevel {.
-  importc: "lockme_xdg_surface_get_toplevel", header: "lockme/wayland_shim.h"
+  importc: "kleis_xdg_surface_get_toplevel", header: "kleis/wayland_shim.h"
 .}
 
 proc xdgToplevelDestroy(
   toplevel: ptr XdgToplevel
-) {.importc: "lockme_xdg_toplevel_destroy", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_toplevel_destroy", header: "kleis/wayland_shim.h".}
 
 proc xdgToplevelSetTitle(
   toplevel: ptr XdgToplevel, title: cstring
-) {.importc: "lockme_xdg_toplevel_set_title", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_toplevel_set_title", header: "kleis/wayland_shim.h".}
 
 proc xdgToplevelSetAppId(
   toplevel: ptr XdgToplevel, appId: cstring
-) {.importc: "lockme_xdg_toplevel_set_app_id", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_toplevel_set_app_id", header: "kleis/wayland_shim.h".}
 
 proc xdgToplevelSetMinSize(
   toplevel: ptr XdgToplevel, width, height: int32
-) {.importc: "lockme_xdg_toplevel_set_min_size", header: "lockme/wayland_shim.h".}
+) {.importc: "kleis_xdg_toplevel_set_min_size", header: "kleis/wayland_shim.h".}
 
 proc memfd_create(name: cstring, flags: cuint): cint {.importc, header: "<sys/mman.h>".}
 
@@ -340,7 +340,7 @@ var
   xdgToplevelListener: XdgToplevelListener
 
 proc fatal(message: string) {.noreturn.} =
-  quit("lockme: " & message, 1)
+  quit("kleis: " & message, 1)
 
 proc matrixNowMs(preview: Preview, now: MonoTime): int64 =
   if preview.clockStart.ticks == 0:
@@ -401,13 +401,13 @@ proc createGpu(preview: Preview): bool =
     )
     if preview.gpu.isNil:
       stderr.writeLine(
-        "lockme: warning: preview GPU renderer unavailable: " & matrixGpuLastError()
+        "kleis: warning: preview GPU renderer unavailable: " & matrixGpuLastError()
       )
       preview.gpuUnavailable = true
       return false
   elif not preview.gpu.resize(int(preview.width), int(preview.height)):
     stderr.writeLine(
-      "lockme: warning: preview GPU renderer resize failed: " & matrixGpuLastError()
+      "kleis: warning: preview GPU renderer resize failed: " & matrixGpuLastError()
     )
     preview.gpu.close()
     preview.gpu = nil
@@ -418,7 +418,7 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
   if preview.width <= 0 or preview.height <= 0:
     return false
   if not preview.ensureRenderer():
-    stderr.writeLine("lockme: warning: failed to initialize Matrix renderer")
+    stderr.writeLine("kleis: warning: failed to initialize Matrix renderer")
     return false
 
   let width = int(preview.width)
@@ -426,7 +426,7 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
   if allowGpu and preview.createGpu():
     return true
   if preview.shm.isNil:
-    stderr.writeLine("lockme: warning: wl_shm unavailable for preview CPU fallback")
+    stderr.writeLine("kleis: warning: wl_shm unavailable for preview CPU fallback")
     return false
   if preview.buffers[0].buffer != nil and preview.buffers[0].width == width and
       preview.buffers[0].height == height:
@@ -436,13 +436,13 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
 
   let geometry = matrixRenderGeometry(width, height, preview.renderer)
   if geometry.cols <= 0 or geometry.rows <= 0:
-    stderr.writeLine("lockme: warning: preview window is too small for matrix cells")
+    stderr.writeLine("kleis: warning: preview window is too small for matrix cells")
     return false
 
   let layout = matrixShmBufferLayout(width, height)
   if not layout.valid:
     stderr.writeLine(
-      "lockme: warning: preview buffer too large: " & $width & "x" & $height & " (max " &
+      "kleis: warning: preview buffer too large: " & $width & "x" & $height & " (max " &
         $MatrixShmMaxDimension & "x" & $MatrixShmMaxDimension & ")"
     )
     return false
@@ -451,22 +451,22 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
 
   for i in 0 ..< preview.buffers.len:
     let buf = addr preview.buffers[i]
-    let fd = memfd_create("lockme-preview".cstring, 0)
+    let fd = memfd_create("kleis-preview".cstring, 0)
     if fd < 0:
       preview.destroyBuffers()
-      stderr.writeLine("lockme: warning: memfd_create failed for preview buffer")
+      stderr.writeLine("kleis: warning: memfd_create failed for preview buffer")
       return false
     if ftruncate(fd, size.Off) != 0:
       discard close(fd)
       preview.destroyBuffers()
-      stderr.writeLine("lockme: warning: ftruncate failed for preview buffer")
+      stderr.writeLine("kleis: warning: ftruncate failed for preview buffer")
       return false
 
     let mapped = mmap(nil, size, PROT_READ or PROT_WRITE, MAP_SHARED, fd, 0)
     if mapped == cast[pointer](-1):
       discard close(fd)
       preview.destroyBuffers()
-      stderr.writeLine("lockme: warning: mmap failed for preview buffer")
+      stderr.writeLine("kleis: warning: mmap failed for preview buffer")
       return false
 
     let pool = wlShmCreatePool(preview.shm, fd, size.int32)
@@ -474,7 +474,7 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
     if pool.isNil:
       discard munmap(mapped, size)
       preview.destroyBuffers()
-      stderr.writeLine("lockme: warning: wl_shm pool creation failed for preview")
+      stderr.writeLine("kleis: warning: wl_shm pool creation failed for preview")
       return false
 
     let wlbuf = wlShmPoolCreateBuffer(
@@ -484,7 +484,7 @@ proc createBuffers(preview: Preview, allowGpu = true): bool =
     if wlbuf.isNil:
       discard munmap(mapped, size)
       preview.destroyBuffers()
-      stderr.writeLine("lockme: warning: wl_shm buffer creation failed for preview")
+      stderr.writeLine("kleis: warning: wl_shm buffer creation failed for preview")
       return false
 
     buf[] = PreviewBuffer(
@@ -512,35 +512,35 @@ proc createBlankBuffer(preview: Preview): bool =
     return true
   preview.blankBuffer.destroyBuffer()
   if preview.shm.isNil:
-    stderr.writeLine("lockme: warning: wl_shm unavailable for blank preview")
+    stderr.writeLine("kleis: warning: wl_shm unavailable for blank preview")
     return false
   let layout = matrixShmBufferLayout(width, height)
   if not layout.valid:
     stderr.writeLine(
-      "lockme: warning: blank preview buffer too large: " & $width & "x" & $height &
+      "kleis: warning: blank preview buffer too large: " & $width & "x" & $height &
         " (max " & $MatrixShmMaxDimension & "x" & $MatrixShmMaxDimension & ")"
     )
     return false
   let size = layout.size
   let stride = layout.stride
-  let fd = memfd_create("lockme-preview-blank".cstring, 0)
+  let fd = memfd_create("kleis-preview-blank".cstring, 0)
   if fd < 0:
-    stderr.writeLine("lockme: warning: memfd_create failed for blank preview buffer")
+    stderr.writeLine("kleis: warning: memfd_create failed for blank preview buffer")
     return false
   if ftruncate(fd, size.Off) != 0:
     discard close(fd)
-    stderr.writeLine("lockme: warning: ftruncate failed for blank preview buffer")
+    stderr.writeLine("kleis: warning: ftruncate failed for blank preview buffer")
     return false
   let mapped = mmap(nil, size, PROT_READ or PROT_WRITE, MAP_SHARED, fd, 0)
   if mapped == cast[pointer](-1):
     discard close(fd)
-    stderr.writeLine("lockme: warning: mmap failed for blank preview buffer")
+    stderr.writeLine("kleis: warning: mmap failed for blank preview buffer")
     return false
   let pool = wlShmCreatePool(preview.shm, fd, size.int32)
   discard close(fd)
   if pool.isNil:
     discard munmap(mapped, size)
-    stderr.writeLine("lockme: warning: wl_shm pool creation failed for blank preview")
+    stderr.writeLine("kleis: warning: wl_shm pool creation failed for blank preview")
     return false
   let wlbuf = wlShmPoolCreateBuffer(
     pool, 0, width.int32, height.int32, stride.int32, WlShmFormatXrgb8888
@@ -548,7 +548,7 @@ proc createBlankBuffer(preview: Preview): bool =
   wlShmPoolDestroy(pool)
   if wlbuf.isNil:
     discard munmap(mapped, size)
-    stderr.writeLine("lockme: warning: wl_shm buffer creation failed for blank preview")
+    stderr.writeLine("kleis: warning: wl_shm buffer creation failed for blank preview")
     return false
 
   let color = 0xff000000'u32 or preview.opts.initColor
@@ -596,7 +596,7 @@ proc presentFrame(preview: Preview): bool =
     ):
       return true
     stderr.writeLine(
-      "lockme: warning: preview GPU renderer failed during render; using CPU renderer fallback: " &
+      "kleis: warning: preview GPU renderer failed during render; using CPU renderer fallback: " &
         matrixGpuLastError()
     )
     preview.gpu.close()
@@ -786,8 +786,8 @@ proc connectAndCreate(opts: Options): Preview =
   discard xdgToplevelAddListener(
     result.xdgToplevel, cast[pointer](addr xdgToplevelListener), cast[pointer](result)
   )
-  xdgToplevelSetTitle(result.xdgToplevel, "lockme Matrix preview".cstring)
-  xdgToplevelSetAppId(result.xdgToplevel, "lockme-preview".cstring)
+  xdgToplevelSetTitle(result.xdgToplevel, "kleis Matrix preview".cstring)
+  xdgToplevelSetAppId(result.xdgToplevel, "kleis-preview".cstring)
   xdgToplevelSetMinSize(result.xdgToplevel, PreviewMinWidth, PreviewMinHeight)
   wlSurfaceCommit(result.surface)
 

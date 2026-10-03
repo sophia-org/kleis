@@ -1,2 +1,2 @@
-src/lockme/protocols/*-protocol.c linguist-generated=true
-src/lockme/protocols/*-client-protocol.h linguist-generated=true
+src/kleis/protocols/*-protocol.c linguist-generated=true
+src/kleis/protocols/*-client-protocol.h linguist-generated=true

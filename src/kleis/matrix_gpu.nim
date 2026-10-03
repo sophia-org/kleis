@@ -11,7 +11,7 @@ when MatrixGpuPkgConfigCheck.exitCode != 0:
   .}
 
 {.
-  passC: "-Isrc -Isrc/lockme " & gorge("pkg-config --cflags " & MatrixGpuPkgConfigDeps)
+  passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & MatrixGpuPkgConfigDeps)
 .}
 {.compile: "matrix_gpu_shim.c".}
 {.passL: gorge("pkg-config --libs " & MatrixGpuPkgConfigDeps).}
@@ -26,28 +26,28 @@ proc gpuCreate(
   width, height, cellWidth, cellHeight, glyphCount: int32,
   atlasPixels: ptr UncheckedArray[uint8],
   atlasWidth, atlasHeight: int32,
-): pointer {.importc: "lockme_matrix_gpu_create", header: "lockme/matrix_gpu_shim.h".}
+): pointer {.importc: "kleis_matrix_gpu_create", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuResize(
   handle: pointer, width, height: int32
-): int32 {.importc: "lockme_matrix_gpu_resize", header: "lockme/matrix_gpu_shim.h".}
+): int32 {.importc: "kleis_matrix_gpu_resize", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuRender(
   handle: pointer,
   timeSeconds: cdouble,
   fallSpeed, cycleSpeed, raindropLength, brightnessDecay: cfloat,
-): int32 {.importc: "lockme_matrix_gpu_render", header: "lockme/matrix_gpu_shim.h".}
+): int32 {.importc: "kleis_matrix_gpu_render", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuDestroy(
   handle: pointer
-) {.importc: "lockme_matrix_gpu_destroy", header: "lockme/matrix_gpu_shim.h".}
+) {.importc: "kleis_matrix_gpu_destroy", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuShutdown() {.
-  importc: "lockme_matrix_gpu_shutdown", header: "lockme/matrix_gpu_shim.h"
+  importc: "kleis_matrix_gpu_shutdown", header: "kleis/matrix_gpu_shim.h"
 .}
 
 proc gpuLastError(): cstring {.
-  importc: "lockme_matrix_gpu_last_error", header: "lockme/matrix_gpu_shim.h"
+  importc: "kleis_matrix_gpu_last_error", header: "kleis/matrix_gpu_shim.h"
 .}
 
 proc matrixGpuLastError*(): string =

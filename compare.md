@@ -1,4 +1,6 @@
-# lockme vs swaylock, waylock, hyprlock
+# kleis vs swaylock, waylock, hyprlock
+
+_Note: this program was named `lockme` when this comparison was written; it is now kleis._
 
 *May 2, 2026*
 
@@ -12,11 +14,11 @@ who has to pick one and live with it.
 | swaylock | C        | 1.8.5    | ~820                 | 106 KB          |
 | waylock  | Zig      | 1.7.0-dev (HEAD 9523ce0) | ~1,310 | 1.9 MB        |
 | hyprlock | C++      | 0.9.5    | ~9,330 (whole tree)  | 825 KB          |
-| lockme   | Nim      | 0.1.0    | ~1,300               | 558 KiB         |
+| kleis   | Nim      | 0.1.0    | ~1,300               | 558 KiB         |
 
 Sizes are the as-shipped binaries on the author's Arch system
 (`/usr/bin/{swaylock,waylock,hyprlock}` from the official packages and
-`nimble build` for lockme). lockme is still well under the size of
+`nimble build` for kleis). kleis is still well under the size of
 hyprlock and several times smaller than waylock, despite shipping more
 hardening than either.
 
@@ -25,7 +27,7 @@ agreement ends.
 
 ## The matrix
 
-| Primitive                          | swaylock | waylock | hyprlock | lockme |
+| Primitive                          | swaylock | waylock | hyprlock | kleis |
 |------------------------------------|----------|---------|----------|--------|
 | Forked auth child (privilege sep)  | yes      | yes     | **no, threaded** | yes |
 | Length-prefixed auth pipe          | yes      | yes     | n/a (in-process) | yes |
@@ -62,7 +64,7 @@ That counts for a lot.
 
 ## waylock
 
-Zig, written by someone who clearly knew what he was doing. lockme is
+Zig, written by someone who clearly knew what he was doing. kleis is
 modeled on it. The fork-and-pipe model matches swaylock's, with a tidy
 4-byte length prefix and a single-byte reply. The password buffer
 allocation is page-aligned by pointer, `mlock`'d with retries, and
@@ -113,7 +115,7 @@ add up to a much larger attack surface than swaylock or waylock.
 If you use hyprlock for anything more serious than a desktop curiosity,
 reconsider.
 
-## lockme
+## kleis
 
 Built on the waylock model, then extended. Forked auth child,
 length-prefixed pipe, byte reply — same shape as waylock and swaylock.
@@ -139,7 +141,7 @@ The process model adds the syscalls waylock left out:
 - `--fork-on-lock` redirects stdio to `/dev/null` and re-applies the
   buffer protections after the fork.
 
-PAM defaults differ too. The shipped `pam.d/lockme` is the explicit
+PAM defaults differ too. The shipped `pam.d/kleis` is the explicit
 minimal chain — `pam_faildelay` + `pam_unix`, which slows repeated
 failures without recording faillock tallies or locking out the user.
 That choice is deliberate for a screen locker: a local attacker should
@@ -149,7 +151,7 @@ as opt-in via `nimble installPamFull` for folks who need fingerprint,
 smartcard, homed, or keyring auto-unlock. Empty Enter is ignored by
 default; `--allow-empty-password` opens it back up.
 
-The UI changed since the first version of this document. lockme now
+The UI changed since the first version of this document. kleis now
 defaults to GPU-rendered Matrix rain while idle, with `--blank` and
 `Alt-B` available for the solid blank screen. Typing and failure states
 still switch to simple solid-color buffers. This is a real usability
@@ -161,20 +163,20 @@ rendering. The main security boundary remains the forked PAM child and
 protected password buffer, so the Matrix renderer does not run in the auth
 process.
 
-Where lockme is weaker: no formal third-party human review, no fuzzing,
+Where kleis is weaker: no formal third-party human review, no fuzzing,
 no CI, no distro packaging, single author, and now a new GPU renderer
 that needs more time under real compositors. The current AI-assisted
 review notes and recent fix history are recorded in [audit.md](audit.md),
 but that is not a substitute for years of field exposure. swaylock and
-waylock have been deployed across thousands of installs. lockme has not.
-Years of accidental field testing is its own kind of audit, and lockme
+waylock have been deployed across thousands of installs. kleis has not.
+Years of accidental field testing is its own kind of audit, and kleis
 has not had it yet.
 
 ## Verdict
 
 In rough order of "would I trust this on my own machine":
 
-1. **lockme** for the security-conscious single-user Linux workstation,
+1. **kleis** for the security-conscious single-user Linux workstation,
    given its hardening goes beyond the others and its surface is
    still deliberately narrow around authentication. The disclaimer is
    real: no formal third-party human review, single author, a new GPU
@@ -186,17 +188,17 @@ In rough order of "would I trust this on my own machine":
    you get years of accidental QA.
 3. **swaylock** if you want something every distro packages and
    nothing fancy. Solid C, proven, well-understood. Fewer hardening
-   bells than waylock or lockme.
+   bells than waylock or kleis.
 4. **hyprlock** only if you accept the threaded PAM and unprotected
    password as a feature, not a bug, in exchange for the GPU
    widgets and animations. For a screen locker, the trade is bad.
 
 NOTE: Most lockers here delegate to a one-line PAM include. Whichever
-you pick, audit the PAM chain it actually uses. lockme's default avoids
+you pick, audit the PAM chain it actually uses. kleis's default avoids
 `system-auth` by design; `nimble installPamFull` opts back into it when
 you need distro-integrated auth modules.
 
-## What lockme could still tighten
+## What kleis could still tighten
 
 Roughly in priority:
 

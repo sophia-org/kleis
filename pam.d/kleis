@@ -1,4 +1,4 @@
-# Default lockme PAM stack: minimal, auditable, distribution-independent.
+# Default kleis PAM stack: minimal, auditable, distribution-independent.
 #
 # This file contains an explicit auth chain of pam_faildelay (bruteforce
 # friction without account lockout) plus pam_unix (password check).
@@ -11,7 +11,7 @@
 #   - smartcards / yubikeys (pam_pkcs11, pam_u2f)
 #   - any other auxiliary auth method configured in system-auth
 #
-# If you need any of the above, install pam.d/lockme.full instead, which
+# If you need any of the above, install pam.d/kleis.full instead, which
 # delegates to the distribution's system-auth chain. See the README's
 # "PAM stack" section for details.
 

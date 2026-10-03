@@ -97,7 +97,7 @@ var childPassword: PasswordBuffer
 proc logPamStatus(debugAuth: bool, pamh: ptr PamHandle, op: string, status: cint) =
   if debugAuth:
     stderr.writeLine(
-      "lockme: debug: " & op & " status=" & $status & " (" & $pam_strerror(pamh, status) &
+      "kleis: debug: " & op & " status=" & $status & " (" & $pam_strerror(pamh, status) &
         ")"
     )
 
@@ -111,7 +111,7 @@ proc logMlockallFailed(debugAuth: bool, flags: cint, err: cint) =
   if not debugAuth:
     return
   stderr.writeLine(
-    "lockme: debug: auth child mlockall(flags=" & $flags & ") failed: " & $strerror(err) &
+    "kleis: debug: auth child mlockall(flags=" & $flags & ") failed: " & $strerror(err) &
       " (RLIMIT_MEMLOCK " & rlimitMemlockSummary() &
       "); PAM/libc password temporaries may be paged to swap, but the dedicated password buffer remains mlock'd"
   )
@@ -274,16 +274,16 @@ proc authLoop(conn: AuthConnection, debugAuth: bool) {.noreturn.} =
   let pw = getpwuid(getuid())
   if pw.isNil:
     discard writeAuthStatus(conn, AuthInitFailedByte)
-    quit("lockme: failed to get current user for PAM", 1)
+    quit("kleis: failed to get current user for PAM", 1)
 
   var conv = PamConv(conv: converse, appdataPtr: nil)
-  var status = pam_start("lockme", pw.pwName, addr conv, addr pamh)
+  var status = pam_start("kleis", pw.pwName, addr conv, addr pamh)
   if status != PamSuccess:
     discard writeAuthStatus(conn, AuthInitFailedByte)
-    quit("lockme: pam_start failed: " & $pam_strerror(nil, status), 1)
+    quit("kleis: pam_start failed: " & $pam_strerror(nil, status), 1)
   if not writeAuthStatus(conn, AuthReadyByte):
     discard pam_end(pamh, status)
-    quit("lockme: failed to notify parent that PAM is ready", 1)
+    quit("kleis: failed to notify parent that PAM is ready", 1)
 
   while true:
     if not readPassword(conn):

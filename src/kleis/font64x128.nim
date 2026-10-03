@@ -4,7 +4,7 @@
 # KoineGreek.ttf is copyright 2012-2023 Alan Bunning / Center for New
 # Testament Restoration and is distributed under CC BY-SA 4.0. The generated
 # glyph alpha data below is derived from that font and is distributed under the
-# same license terms. lockme source code remains MIT-licensed.
+# same license terms. kleis source code remains MIT-licensed.
 
 const
   HighResGlyphWidth* = 64

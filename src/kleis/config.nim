@@ -1,4 +1,4 @@
-## Lockme configuration file loading.
+## Kleis configuration file loading.
 ##
 ## Configuration is parsed from a KDL document and merged into the existing
 ## Options. CLI flags always win over config (tracked via Options.setFlags).
@@ -10,7 +10,7 @@ import kdl
 import ./cli
 
 const
-  ConfigDirName* = "lockme"
+  ConfigDirName* = "kleis"
   ConfigFileName* = "config.kdl"
   MatrixFrameMsMin* = 30
   MatrixFrameMsMax* = 5000
@@ -59,7 +59,7 @@ proc xdgConfigDirs(): seq[string] =
       result.add part
 
 proc findConfigFile*(): Option[string] =
-  ## Searches the standard XDG locations for ``lockme/config.kdl``.
+  ## Searches the standard XDG locations for ``kleis/config.kdl``.
   let primary = xdgConfigHome() / ConfigDirName / ConfigFileName
   if fileExists(primary):
     return some(primary)
