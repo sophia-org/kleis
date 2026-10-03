@@ -108,7 +108,7 @@ fail-color "0xcccccc"
     check opts.inputColors == @[0xbbbbbb'u32]
     check opts.failColor == 0xcccccc'u32
 
-  test "log-level and booleans":
+  test "log-level, and old Wayland keys still load":
     let path = getTempDir() / "kleis_test_misc.kdl"
     writeFile(
       path,
@@ -121,10 +121,9 @@ ignore-empty-password #false
     defer:
       removeFile(path)
     var opts = defaultOptions()
+    # The Wayland locker's keys still load, and are ignored.
     opts.applyConfigFile(path)
     check opts.logLevel == llDebug
-    check opts.forkOnLock == true
-    check opts.ignoreEmptyPassword == false
 
   test "blank option and matrix settings":
     let path = getTempDir() / "kleis_test_blank.kdl"

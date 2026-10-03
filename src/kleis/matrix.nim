@@ -155,13 +155,9 @@ proc advance*(rain: var MatrixRain) =
       continue
     rain.advanceColumn(i)
 
-proc initMatrixRain*(width, height: int): MatrixRain =
-  result = MatrixRain(
-    width: width,
-    height: height,
-    tick: 0,
-    rng: initRand(now().toTime().toUnix() xor (width.int64 shl 32 or height.int64)),
-  )
+proc initMatrixRain*(width, height: int, seed: int64): MatrixRain =
+  ## A fixed seed gives the same rain every run, for the headless harness.
+  result = MatrixRain(width: width, height: height, tick: 0, rng: initRand(seed))
   result.columns = newSeq[MatrixColumn](width)
   for i in 0 ..< width:
     result.columns[i].glyphs = newSeq[int](height)
@@ -170,3 +166,8 @@ proc initMatrixRain*(width, height: int): MatrixRain =
   let warmupSteps = max(1, height + MatrixMinStreamLength + 2)
   for _ in 0 ..< warmupSteps:
     result.advance()
+
+proc initMatrixRain*(width, height: int): MatrixRain =
+  initMatrixRain(
+    width, height, now().toTime().toUnix() xor (width.int64 shl 32 or height.int64)
+  )

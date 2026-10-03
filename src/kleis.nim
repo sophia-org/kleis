@@ -2,8 +2,6 @@ import std/os
 
 import kleis/cli
 import kleis/config
-import kleis/preview
-import kleis/wayland
 
 when isMainModule:
   try:
@@ -15,14 +13,10 @@ when isMainModule:
       echo Version
       quit(0)
     opts.loadConfig()
-    if opts.devWindow:
-      if not opts.devMode:
-        raise newException(ValueError, "--dev-window requires --dev-mode")
-      runDevWindow(opts)
-    elif opts.checkProtocols:
-      checkProtocols(opts)
-    else:
-      runLock(opts)
+    # The provider connection over Sophia's lock files is phase 3 of
+    # docs/sophia-port-plan.md; it waits for the published C SDK lock client.
+    raise
+      newException(ValueError, "the Sophia lock provider connection is not built yet")
   except ValueError as e:
     stderr.writeLine("kleis: " & e.msg)
     quit(1)

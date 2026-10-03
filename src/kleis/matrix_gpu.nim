@@ -10,9 +10,7 @@ when MatrixGpuPkgConfigCheck.exitCode != 0:
       "missing system dependencies: install pkg-config plus development packages for egl, glesv2, and wayland-egl"
   .}
 
-{.
-  passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & MatrixGpuPkgConfigDeps)
-.}
+{.passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & MatrixGpuPkgConfigDeps).}
 {.compile: "matrix_gpu_shim.c".}
 {.passL: gorge("pkg-config --libs " & MatrixGpuPkgConfigDeps).}
 

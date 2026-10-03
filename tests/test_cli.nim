@@ -9,33 +9,16 @@ suite "cli":
     check opts.failColor == 0x8B0000'u32
     check opts.inputColors == @[0x4B0082'u32, 0x003366'u32, 0x006400'u32]
 
-  test "ignoreEmptyPassword defaults to true":
-    let opts = parseOptions(@[])
-    check opts.ignoreEmptyPassword
-
-  test "devMode defaults to false":
-    let opts = parseOptions(@[])
-    check not opts.devMode
-
-  test "--dev-mode enables dev escape":
-    let opts = parseOptions(@["--dev-mode"])
-    check opts.devMode
-    check cfDevMode in opts.setFlags
-
-  test "--dev-window enables preview window":
-    let opts = parseOptions(@["--dev-mode", "--dev-window"])
-    check opts.devMode
-    check opts.devWindow
-    check cfDevWindow in opts.setFlags
-
-  test "--allow-empty-password disables ignore":
-    let opts = parseOptions(@["--allow-empty-password"])
-    check not opts.ignoreEmptyPassword
-    check cfIgnoreEmptyPassword in opts.setFlags
-
-  test "--ignore-empty-password is accepted (back-compat)":
-    let opts = parseOptions(@["--ignore-empty-password"])
-    check opts.ignoreEmptyPassword
+  test "Wayland-locker options are gone":
+    # Sophia starts the provider, owns the secret and decides the unlock.
+    for removed in [
+      "--dev-mode", "--dev-window", "--check-protocols", "--fork-on-lock",
+      "--allow-empty-password", "--ignore-empty-password",
+    ]:
+      expect ValueError:
+        discard parseOptions(@[removed])
+    expect ValueError:
+      discard parseOptions(@["--ready-fd", "9"])
 
   test "parse init/fail colors":
     let opts = parseOptions(@["--init-color", "0x112233", "--fail-color", "0x445566"])
@@ -65,20 +48,6 @@ suite "cli":
   test "reject hash color (CLI requires 0x prefix)":
     expect ValueError:
       discard parseOptions(@["--init-color", "#112233"])
-
-  test "ready fd":
-    let opts = parseOptions(@["--ready-fd", "9"])
-    check opts.hasReadyFd
-    check opts.readyFd == 9
-    check cfReadyFd in opts.setFlags
-
-  test "rejects negative ready fd":
-    expect ValueError:
-      discard parseOptions(@["--ready-fd", "-1"])
-
-  test "rejects out-of-range ready fd":
-    expect ValueError:
-      discard parseOptions(@["--ready-fd", "9999999999"])
 
   test "--config sets configPath":
     let opts = parseOptions(@["--config", "/tmp/kleis.kdl"])

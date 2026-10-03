@@ -156,19 +156,9 @@ proc applyConfigDoc*(opts: var Options, doc: KdlDoc) =
       raise newException(ValueError, "log-level requires a value")
     opts.logLevel = parseLogLevelStrict(n.args[0].kString())
 
-  let forkNode = doc.findNode("fork-on-lock")
-  if forkNode.isSome and cfForkOnLock notin opts.setFlags:
-    let n = forkNode.get
-    if n.args.len < 1:
-      raise newException(ValueError, "fork-on-lock requires a boolean value")
-    opts.forkOnLock = n.args[0].kBool()
-
-  let emptyNode = doc.findNode("ignore-empty-password")
-  if emptyNode.isSome and cfIgnoreEmptyPassword notin opts.setFlags:
-    let n = emptyNode.get
-    if n.args.len < 1:
-      raise newException(ValueError, "ignore-empty-password requires a boolean value")
-    opts.ignoreEmptyPassword = n.args[0].kBool()
+  # fork-on-lock and ignore-empty-password belonged to the Wayland locker:
+  # Sophia starts the provider and owns the secret. Old configs that set
+  # them still load; the nodes are ignored like any unknown one.
 
   if doc.findNode("matrix").isSome:
     raise newException(ValueError, "matrix has been replaced by blank")

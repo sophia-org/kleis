@@ -5,6 +5,13 @@ implement `ext-session-lock-v1`.
 
 kleis began as `lockme`, a Wayland locker; it is the same code under a new name.
 
+**Status (branch `sophia-port`):** kleis is becoming a native Sophia lock
+provider. On Sophia it only renders: Session owns the lock and the password,
+and kleis never sees a character. The Wayland, PAM and password code is gone
+from this branch, and the provider connection is not built yet, so the
+Wayland instructions below describe `lockme`, not this branch. See
+[docs/sophia-port-plan.md](docs/sophia-port-plan.md).
+
 ![Matrix rain lock screen](matrix_rain.png?v=20260511)
 
 `kleis` aims at one thing: keep a typed password out of every place

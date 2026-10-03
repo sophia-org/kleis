@@ -1,8 +1,27 @@
 # kleis on Sophia: native port plan
 
-Status: plan. Depends on Sophia t294 (lock provider role and the
-`sophia-lock-files-v1` 9P contract, being drafted) and t295 (C desktop SDK lock
-client). Direction is set by Sophia ADR w0seozxx and plan 8jcykhdc.
+Status: phases 1 and 2 done on branch `sophia-port`; phase 3 waits for the
+published C SDK lock client. Depends on Sophia t294 (lock provider role and the
+`sophia-lock-files-v1` 9P contract, drafted on Sophia `lock/t034-next`) and t295
+(C desktop SDK lock client, `sophia_lock_client.h` on the SDK's
+`t295-lock-files` branch). Direction is set by Sophia ADR w0seozxx and plan
+8jcykhdc.
+
+Progress on `sophia-port`:
+
+- Phase 1: the Wayland, PAM, password and preview code is gone, and so are the
+  options only the Wayland locker used (`--dev-mode`, `--dev-window`,
+  `--check-protocols`, `--fork-on-lock`, `--ready-fd`, the empty-password
+  pair). Old configs that set `fork-on-lock` or `ignore-empty-password` still
+  load; the nodes are ignored. `kleis` itself exits with an error until
+  phase 3.
+- Phase 2: `frame.nim` renders a view into exactly one allocation's pixels
+  (little-endian 0xAARRGGBB words, which are the contract's premultiplied
+  BGRA8; every pixel is opaque). `tools/kleis_render.nim` (`nimble render`)
+  replaces the preview window: it renders one allocation after a scripted run
+  of lock events and writes a PPM, with a fixed Matrix seed by default.
+- Phase 4's state machine is in `ui.nim` already, since it needs only the
+  event values: the rules below, tested in `tests/test_ui.nim`.
 
 ## Role
 
@@ -67,7 +86,13 @@ On Sophia they are driven by edit and status events:
 - Submit shows Checking until Failed or Unlocked arrives; kleis does not time it out.
 - Idle-timeout blanking stays local: any event resets the idle clock; on expiry
   kleis presents a blank candidate, and any event restores rain. Blank is a
-  rendering choice; the Engine cover is already opaque.
+  rendering choice; the Engine cover is already opaque. As in lockme, blank
+  only turns the Matrix off: the screen shows the current state's colour.
+- Unlike lockme, a key that ends idle blanking is not swallowed: it already
+  reached Session's secret, so the screen shows it. A chord that wakes the
+  screen is consumed, as before, since chords never reach the secret.
+- Unavailable (the authenticator could not decide) shows the fail colour, as
+  Failed does.
 - A registered chord ID (Alt-B) toggles matrix and blank locally. Chords must
   include a non-Shift modifier and never reach the secret.
 - Per-output rendering uses the allocation size, scale and epoch from the

@@ -19,33 +19,21 @@ type
   CliFlag* = enum
     ## Which option fields were explicitly set on the CLI. Used to merge
     ## defaults <- config-file <- CLI without re-parsing.
-    cfForkOnLock
-    cfReadyFd
-    cfIgnoreEmptyPassword
-    cfDevMode
     cfInitColor
     cfInputColors
     cfFailColor
     cfLogLevel
-    cfCheckProtocols
     cfConfigPath
     cfNoConfig
     cfBlank
     cfNoGpu
     cfIdleTimeout
-    cfDevWindow
 
   Options* = object
-    forkOnLock*: bool
-    readyFd*: int
-    hasReadyFd*: bool
-    ignoreEmptyPassword*: bool
-    devMode*: bool
     initColor*: uint32
     inputColors*: seq[uint32]
     failColor*: uint32
     logLevel*: LogLevel
-    checkProtocols*: bool
     showHelp*: bool
     showVersion*: bool
     configPath*: Option[string]
@@ -53,7 +41,6 @@ type
     blank*: bool
     noGpu*: bool
     idleTimeoutSecs*: int
-    devWindow*: bool
     matrixFrameMs*: int
     matrixCellScale*: float
     matrixFallSpeed*: float
@@ -68,17 +55,9 @@ const Usage* = """usage: kleis [options]
   --version                        Print the version number and exit.
   --log-level <level>              Set log level: error, warning, info, debug.
 
-  --fork-on-lock                   Fork to the background after locking.
-  --ready-fd <fd>                  Write a newline to fd after locking.
-  --allow-empty-password           Submit empty passwords to PAM (default:
-                                   ignore Enter on empty buffer).
-  --dev-mode                       Insecure development mode: Esc unlocks and
-                                   exits without PAM authentication.
-  --dev-window                     With --dev-mode, render the preview in a
-                                   normal Wayland window.
-  --check-protocols                Check required Wayland globals without locking.
   --blank                          Start with a blank screen instead of Matrix.
-  --no-gpu                         Use the CPU renderer instead of GPU/EGL.
+  --no-gpu                         Render on the CPU. The Sophia build renders
+                                   on the CPU only for now.
   --idle-timeout <seconds>         Blank the screen after this many seconds of
                                    inactivity. 0 disables (default: 0).
 
@@ -90,15 +69,13 @@ const Usage* = """usage: kleis [options]
                                    first occurrence replaces the default
                                    palette, subsequent occurrences append.
                                    kleis cycles through these on each
-                                   keypress.
+                                   character typed.
   --fail-color 0xRRGGBB            Set the auth failure color.
 """
 
 proc defaultOptions*(): Options =
   ## Built-in defaults. See README for the documented palette.
   Options(
-    readyFd: -1,
-    ignoreEmptyPassword: true,
     initColor: 0x000000'u32, # pure black
     inputColors: @[0x4B0082'u32, 0x003366'u32, 0x006400'u32],
       # Father (Tyrian indigo/violet), Son (royal blue), Spirit (life green)
@@ -150,24 +127,6 @@ proc parseOptions*(args: seq[string]): Options =
       result.showHelp = true
     of "--version":
       result.showVersion = true
-    of "--fork-on-lock":
-      result.forkOnLock = true
-      result.setFlags.incl cfForkOnLock
-    of "--ignore-empty-password":
-      result.ignoreEmptyPassword = true
-      result.setFlags.incl cfIgnoreEmptyPassword
-    of "--allow-empty-password":
-      result.ignoreEmptyPassword = false
-      result.setFlags.incl cfIgnoreEmptyPassword
-    of "--dev-mode":
-      result.devMode = true
-      result.setFlags.incl cfDevMode
-    of "--dev-window":
-      result.devWindow = true
-      result.setFlags.incl cfDevWindow
-    of "--check-protocols":
-      result.checkProtocols = true
-      result.setFlags.incl cfCheckProtocols
     of "--blank":
       result.blank = true
       result.setFlags.incl cfBlank
@@ -188,15 +147,6 @@ proc parseOptions*(args: seq[string]): Options =
     of "--config":
       result.configPath = some(needValue(args, i, arg))
       result.setFlags.incl cfConfigPath
-      inc i
-    of "--ready-fd":
-      let raw = needValue(args, i, arg)
-      let fd = parseInt(raw)
-      if fd < 0 or fd > int(high(cint)):
-        raise newException(ValueError, "invalid --ready-fd value '" & raw & "'")
-      result.readyFd = fd
-      result.hasReadyFd = true
-      result.setFlags.incl cfReadyFd
       inc i
     of "--log-level":
       result.logLevel = parseLogLevel(needValue(args, i, arg))
