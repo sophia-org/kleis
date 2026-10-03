@@ -8,4 +8,5 @@
 /tests/test_matrix
 /tests/test_frame
 /tests/test_ui
+/tests/test_presenter
 /tools/kleis_render

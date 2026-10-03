@@ -1,0 +1,25 @@
+tree ff2aef10e275ada8c06dba4de406a776c9a2c3bc
+parent 7e6011e33a4c8c2d833630c4cdf4c2bc79ce3005
+author Mason Green <mason@greenm01.net> 1791048210 -0400
+committer Mason Green <mason@greenm01.net> 1791048210 -0400
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasE6EhsUgAAAAAAEAA5t
+ YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGIbTwD/dhC7y1ht7+27XlY0MUsa
+ 7tTWLF5hLsKdea5fIMlVS4YA/1EwNSGyv+tLChRCzQmkzpx3GEyJWH120H1DKXHt
+ hFoL
+ =1YAa
+ -----END PGP SIGNATURE-----
+
+End and cancel a lock upload under its own transaction (Sophia t295)
+
+Sophia's export answers ResourceEnd and ResourceCancel only when they
+carry the ResourceBegin's transaction; a run of this client against the
+production export (Sophia fd6ea7538, which now states the rule) had its
+End refused. upload_end and upload_cancel take no transaction and use the
+begin's. The scripted peer refuses any other, and a mutant that sends
+another is killed.
+
+The same run then completed every exchange: negotiation with a chord,
+lock fetches, a two-chunk upload, demand and permit, a presented
+candidate, entry and chord events, and the republish to unlocking.

@@ -22,9 +22,10 @@ const nphTargets =
   "kleis.nimble src/kleis.nim " &
   "src/kleis/cli.nim src/kleis/config.nim src/kleis/frame.nim " &
   "src/kleis/matrix.nim src/kleis/matrix_gpu.nim src/kleis/matrix_render.nim " &
+  "src/kleis/presenter.nim src/kleis/provider.nim src/kleis/sophia_sdk.nim " &
   "src/kleis/ui.nim tools/kleis_render.nim " &
   "tests/test_cli.nim tests/test_config.nim tests/test_frame.nim " &
-  "tests/test_matrix.nim tests/test_ui.nim"
+  "tests/test_matrix.nim tests/test_presenter.nim tests/test_ui.nim"
 
 import std/os
 
@@ -52,6 +53,7 @@ task test, "Run unit tests":
   exec "nim c -r --path:src tests/test_matrix.nim"
   exec "nim c -r --path:src tests/test_ui.nim"
   exec "nim c -r --path:src tests/test_frame.nim"
+  exec "nim c -r --path:src tests/test_presenter.nim"
 
 task render, "Build the headless renderer, tools/kleis_render":
   exec "nim c -d:release --path:src --out:tools/kleis_render tools/kleis_render.nim"

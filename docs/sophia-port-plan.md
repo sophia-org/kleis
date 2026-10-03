@@ -1,7 +1,8 @@
 # kleis on Sophia: native port plan
 
-Status: phases 1 and 2 done on branch `sophia-port`; phase 3 waits for the
-published C SDK lock client. Depends on Sophia t294 (lock provider role and the
+Status: phases 1-4 done on branch `sophia-port` against a development pin of
+the C SDK lock client (`30cc519`, branch `t295-lock-files`); the pin moves to
+the released SDK before kleis ships. Depends on Sophia t294 (lock provider role and the
 `sophia-lock-files-v1` 9P contract, drafted on Sophia `lock/t034-next`) and t295
 (C desktop SDK lock client, `sophia_lock_client.h` on the SDK's
 `t295-lock-files` branch). Direction is set by Sophia ADR w0seozxx and plan
@@ -22,6 +23,23 @@ Progress on `sophia-port`:
   of lock events and writes a PPM, with a fixed Matrix seed by default.
 - Phase 4's state machine is in `ui.nim` already, since it needs only the
   event values: the rules below, tested in `tests/test_ui.nim`.
+- Phase 3: `vendor/sophia-desktop-sdk` holds the C SDK (Hagia's layout:
+  source, sorted sha256 manifest, raw commit object). `lock_sdk.c` is a flat
+  shim over its lock client and `sophia_sdk.nim` binds it. `presenter.nim`
+  decides the next record per screen: render and upload a resource, then
+  demand a frame and offer the candidate the moment its permit arrives
+  (permits expire before a large upload could finish), then retire the image
+  it replaced. Frames are coalesced, never queued, and a screen holds at most
+  two live resources. `provider.nim` runs the loop: the socket and config from
+  `SOPHIA_LOCK_9P_SOCKET` and `SOPHIA_LOCK_CONFIG` (the sandbox has no HOME),
+  Alt-B registered as the first chord, a record counted only once Sophia takes
+  custody of it, and a nonzero exit when the connection ends, so Sophia starts
+  a replacement under a fresh epoch.
+- Phase 4: lock events drive `ui.nim`, and a changed view or Matrix tick marks
+  every screen for a new frame. A Sophia-side scratch run with the real kleis
+  binary against the production lock service presented Matrix frames, the
+  typed colour, the Matrix again after Clear, and blank on Alt-B, and retired
+  its images on unlock.
 
 ## Role
 

@@ -8,7 +8,8 @@ kleis began as `lockme`, a Wayland locker; it is the same code under a new name.
 **Status (branch `sophia-port`):** kleis is becoming a native Sophia lock
 provider. On Sophia it only renders: Session owns the lock and the password,
 and kleis never sees a character. The Wayland, PAM and password code is gone
-from this branch, and the provider connection is not built yet, so the
+from this branch, which connects to Sophia's lock files through the vendored
+C desktop SDK. It ships once that SDK's lock client is released, and the
 Wayland instructions below describe `lockme`, not this branch. See
 [docs/sophia-port-plan.md](docs/sophia-port-plan.md).
 

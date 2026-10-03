@@ -1,7 +1,7 @@
 import std/os
 
 import kleis/cli
-import kleis/config
+import kleis/provider
 
 when isMainModule:
   try:
@@ -12,11 +12,14 @@ when isMainModule:
     if opts.showVersion:
       echo Version
       quit(0)
-    opts.loadConfig()
-    # The provider connection over Sophia's lock files is phase 3 of
-    # docs/sophia-port-plan.md; it waits for the published C SDK lock client.
-    raise
-      newException(ValueError, "the Sophia lock provider connection is not built yet")
+    if getEnv("SOPHIA_LOCK_9P_SOCKET").len == 0:
+      raise newException(
+        ValueError,
+        "kleis is a Sophia lock provider: Sophia starts it from the profile's " &
+          "session { lock-provider } (tools/kleis_render previews it)",
+      )
+    # Under Sophia there is no HOME: the config arrives in SOPHIA_LOCK_CONFIG.
+    runProvider(opts)
   except ValueError as e:
     stderr.writeLine("kleis: " & e.msg)
     quit(1)

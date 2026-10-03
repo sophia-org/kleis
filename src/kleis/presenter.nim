@@ -1,0 +1,254 @@
+## Which lock-file record kleis sends next, for every output Sophia granted.
+##
+## Pure: the provider loop feeds it the lock object and events, asks it for
+## one action, performs it through the SDK and reports whether the server took
+## it. Per output the pipeline is: render and upload a fresh resource; once it
+## is whole, ask for a frame (FrameDemand); offer it the moment the permit
+## arrives, since permits expire within 250 ms and an upload can take longer;
+## on Presented, retire the image it replaced. An output holds at most two
+## live resources: the one shown and the next. Frames are coalesced, never
+## queued: a change while an output is busy marks it dirty for the next round.
+
+type
+  Allocation* = object
+    output*, outputGeneration*, allocation*, allocationGeneration*: uint64
+    width*, height*: int
+
+  Stage* = enum
+    stIdle ## nothing in flight; `ready` may hold a whole image
+    stUploading ## the upload of `uploading` is under way
+    stDemanded ## a FrameDemand for `ready` is standing
+    stPermitted ## a permit arrived; the candidate goes next
+    stOffered ## a candidate for `ready` awaits its outcome
+
+  Output* = object
+    alloc*: Allocation
+    stage*: Stage
+    dirty*: bool
+    blocked*: bool ## the server refused a record; wait for a new lock object
+    shown*, ready*, uploading*: uint64
+    demand*, permit*, candidateGeneration*: uint64
+
+  ActionKind* = enum
+    akNone
+    akRetire
+    akCandidate
+    akDemand
+    akDropReady
+    akUpload
+
+  Action* = object
+    kind*: ActionKind
+    index*: int
+    resource*: uint64
+    transaction*: uint64
+    demand*, candidateGeneration*: uint64
+
+  Presenter* = object
+    drawing*: bool
+    lockEpoch*: uint64
+    outputs*: seq[Output]
+    retiring*: seq[uint64]
+    cancelUpload*: bool ## the upload's output went away; cancel it
+    nextTransaction*, nextResource*, nextDemand*, nextCandidate*: uint64
+
+proc initPresenter*(): Presenter =
+  Presenter(nextTransaction: 1, nextResource: 1, nextDemand: 1, nextCandidate: 1)
+
+proc mint(counter: var uint64): uint64 =
+  result = counter
+  inc counter
+
+proc retireOutput(p: var Presenter, o: Output) =
+  for id in [o.shown, o.ready]:
+    if id != 0:
+      p.retiring.add id
+  if o.uploading != 0:
+    p.cancelUpload = true
+
+proc find(p: Presenter, alloc: Allocation): int =
+  for i, o in p.outputs:
+    if o.alloc == alloc:
+      return i
+  -1
+
+proc setLock*(
+    p: var Presenter,
+    drawing: bool,
+    lockEpoch: uint64,
+    allocations: openArray[Allocation],
+) =
+  ## A new lock object. Outputs whose allocation it no longer grants are
+  ## retired; a new lock epoch voids anything offered or permitted.
+  let epochChanged = lockEpoch != p.lockEpoch
+  var kept: seq[Output]
+  for o in p.outputs:
+    if drawing and o.alloc in allocations:
+      var o = o
+      o.blocked = false
+      o.dirty = true
+      if epochChanged and o.stage in {stDemanded, stPermitted, stOffered}:
+        o.stage = stIdle
+        o.permit = 0
+      kept.add o
+    else:
+      p.retireOutput(o)
+  if drawing:
+    for a in allocations:
+      var present = false
+      for o in kept:
+        if o.alloc == a:
+          present = true
+      if not present:
+        kept.add Output(alloc: a, dirty: true)
+  p.outputs = kept
+  p.drawing = drawing
+  p.lockEpoch = lockEpoch
+
+proc markDirty*(p: var Presenter) =
+  for o in p.outputs.mitems:
+    o.dirty = true
+
+proc uploadOwner*(p: Presenter): int =
+  for i, o in p.outputs:
+    if o.stage == stUploading:
+      return i
+  -1
+
+proc next*(p: var Presenter): Action =
+  ## The one record to send now, by urgency: a permitted candidate before
+  ## its permit lapses, then retirements that free budget, then demands, then
+  ## a new upload. akNone when there is nothing to do.
+  for i, o in p.outputs:
+    if o.stage == stPermitted:
+      return Action(
+        kind: akCandidate,
+        index: i,
+        resource: o.ready,
+        transaction: p.nextTransaction,
+        candidateGeneration: p.nextCandidate,
+      )
+  if p.retiring.len > 0:
+    return
+      Action(kind: akRetire, resource: p.retiring[0], transaction: p.nextTransaction)
+  if not p.drawing:
+    return
+  for i, o in p.outputs:
+    if o.stage == stIdle and o.ready != 0 and not o.blocked:
+      if o.dirty:
+        # The image waiting to be offered is out of date: drop it.
+        return Action(
+          kind: akDropReady, index: i, resource: o.ready, transaction: p.nextTransaction
+        )
+      return Action(
+        kind: akDemand, index: i, transaction: p.nextTransaction, demand: p.nextDemand
+      )
+  if p.uploadOwner() < 0 and not p.cancelUpload:
+    for i, o in p.outputs:
+      if o.stage == stIdle and o.ready == 0 and o.dirty and not o.blocked:
+        return Action(
+          kind: akUpload,
+          index: i,
+          resource: p.nextResource,
+          transaction: p.nextTransaction,
+        )
+
+proc applied*(p: var Presenter, a: Action) =
+  ## The server took the record `a` sent.
+  discard p.nextTransaction.mint()
+  case a.kind
+  of akNone:
+    discard
+  of akRetire:
+    p.retiring.delete(0)
+  of akDropReady:
+    p.outputs[a.index].ready = 0
+  of akCandidate:
+    discard p.nextCandidate.mint()
+    p.outputs[a.index].stage = stOffered
+    p.outputs[a.index].candidateGeneration = a.candidateGeneration
+    p.outputs[a.index].permit = 0
+  of akDemand:
+    discard p.nextDemand.mint()
+    p.outputs[a.index].stage = stDemanded
+    p.outputs[a.index].demand = a.demand
+  of akUpload:
+    discard p.nextResource.mint()
+    p.outputs[a.index].stage = stUploading
+    p.outputs[a.index].uploading = a.resource
+    p.outputs[a.index].dirty = false
+
+proc refused*(p: var Presenter, a: Action) =
+  ## The server refused the record outright: nothing was journaled. The
+  ## transaction is spent; the output waits for a new lock object.
+  discard p.nextTransaction.mint()
+  case a.kind
+  of akRetire:
+    p.retiring.delete(0)
+  of akCandidate:
+    p.outputs[a.index].stage = stIdle
+    p.outputs[a.index].permit = 0
+  of akDemand, akUpload, akDropReady:
+    p.outputs[a.index].blocked = true
+  of akNone:
+    discard
+
+proc uploadStatus*(p: var Presenter, resource: uint64, status: uint16) =
+  ## ResourceStatus for an upload: 1 admitted, 2 accepted, 3 rejected,
+  ## 4 cancelled.
+  for o in p.outputs.mitems:
+    if o.stage == stUploading and o.uploading == resource:
+      case status
+      of 2:
+        o.ready = resource
+        o.uploading = 0
+        o.stage = stIdle
+      of 3, 4:
+        o.uploading = 0
+        o.stage = stIdle
+        if status == 3:
+          o.blocked = true
+      else:
+        discard
+      return
+  # The upload's output went away while it was in flight.
+  if status == 2:
+    p.retiring.add resource
+  if status in {2'u16, 3'u16, 4'u16}:
+    p.cancelUpload = false
+
+proc uploadEnded*(p: var Presenter) =
+  ## The SDK finished an upload whose output went away.
+  p.cancelUpload = false
+
+proc permit*(
+    p: var Presenter, allocation, allocationGeneration, demand, pacingPermit: uint64
+) =
+  for o in p.outputs.mitems:
+    if o.alloc.allocation == allocation and
+        o.alloc.allocationGeneration == allocationGeneration and o.stage == stDemanded and
+        o.demand == demand:
+      o.stage = stPermitted
+      o.permit = pacingPermit
+      return
+
+proc outcome*(
+    p: var Presenter, allocation, candidateGeneration: uint64, status: uint16
+) =
+  ## 1 prepared, 2 presented, 3 rejected, 4 superseded, 5 revoked.
+  for o in p.outputs.mitems:
+    if o.alloc.allocation == allocation and o.stage == stOffered and
+        o.candidateGeneration == candidateGeneration:
+      case status
+      of 2:
+        if o.shown != 0:
+          p.retiring.add o.shown
+        o.shown = o.ready
+        o.ready = 0
+        o.stage = stIdle
+      of 3, 4, 5:
+        # The image is still whole: offer it again, or a newer one.
+        o.stage = stIdle
+      else:
+        discard
+      return
