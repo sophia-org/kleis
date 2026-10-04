@@ -18,7 +18,9 @@
 ##
 ## Storage bounds per output of W x H pixels:
 ## - two slot frames of W * H * 4 bytes (the frames the provider uploads), each
-##   a readback buffer, a heap buffer, or on the GPU without BGRA readback both;
+##   a readback buffer, a heap buffer, or both: on the GPU a slot keeps its
+##   readback buffer while it holds a heap frame, for a solid view or on a
+##   device without BGRA readback, so a slot can hold 2 * W * H * 4 bytes;
 ## - on the GPU: a W x H RGBA8 renderbuffer, four grid-sized state textures
 ##   and one glyph atlas row;
 ## - on the CPU: one float per cell and one glyph atlas row per cell size.
