@@ -25,9 +25,11 @@
  * Rezmason/matrix (MIT, copyright 2018 Rezmason): update raindrop state,
  * update symbol state, then render glyphs from an atlas.
  *
- * Frames are rendered offscreen: one framebuffer per output, read back
- * through a pixel-pack buffer behind a fence, so the frame that is waited
- * for is always one whose GPU work was queued earlier.
+ * Frames are rendered offscreen: one framebuffer per output, read back into
+ * a frame's own pixel-pack buffer behind a fence, so the frame that is waited
+ * for is always one whose GPU work was queued earlier. The final pass writes
+ * the frame's top row first in memory, so a readback needs no flip and a
+ * mapped BGRA buffer is the frame itself.
  */
 
 typedef struct {
@@ -56,8 +58,16 @@ struct kleis_matrix_gpu_target {
 	int32_t atlas_height;
 	GLuint framebuffer;
 	GLuint color;
+};
+
+/* One frame's readback: its pack buffer, the fence of the readback queued
+ * into it, and its mapping while mapped. */
+struct kleis_matrix_gpu_frame {
+	int32_t width;
+	int32_t height;
 	GLuint pack_buffer;
 	GLsync fence;
+	const uint32_t *mapped;
 };
 
 struct kleis_matrix_gpu {
@@ -67,6 +77,8 @@ struct kleis_matrix_gpu {
 	EGLContext context;
 	bool bgra_readback;
 	int targets;
+	int frames;
+
 	char identity[256];
 };
 
@@ -93,6 +105,12 @@ static sg_shader g_final_shader;
 static sg_sampler g_atlas_sampler;
 static sg_sampler g_state_sampler;
 static _Thread_local char g_last_error[256];
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+/* Set by tests on their own thread, read by the device's. */
+static bool g_test_fail_next_render = false;
+static bool g_test_copy_readback = false;
+static int32_t g_test_device_open = 0;
+#endif
 
 static const char *fullscreen_vertex_source =
 	"#version 300 es\n"
@@ -203,7 +221,8 @@ static const char *final_fragment_source =
 	"  float cell_h = max(surface_cell.w, 1.0);\n"
 	"  float glyph_count = max(atlas_time.z, 1.0);\n"
 	"  vec2 grid = max(grid_params.xy, vec2(1.0));\n"
-	"  vec2 top_pixel = vec2(gl_FragCoord.x, surface_h - gl_FragCoord.y);\n"
+	/* Window row 0, the first row a readback writes, is the frame's top. */
+	"  vec2 top_pixel = gl_FragCoord.xy;\n"
 	"  if (top_pixel.x < 0.0 || top_pixel.y < 0.0 || top_pixel.x >= surface_w || top_pixel.y >= surface_h) { discard; }\n"
 	"  vec2 cell = floor(top_pixel / vec2(cell_w, cell_h));\n"
 	"  if (cell.x < 0.0 || cell.y < 0.0 || cell.x >= grid.x || cell.y >= grid.y) { discard; }\n"
@@ -694,6 +713,11 @@ static bool start_context(struct kleis_matrix_gpu *gpu, bool allow_software) {
 	}
 	const char *gl_extensions = (const char *)glGetString(GL_EXTENSIONS);
 	gpu->bgra_readback = has_extension(gl_extensions, "GL_EXT_read_format_bgra");
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+	if (__atomic_load_n(&g_test_copy_readback, __ATOMIC_ACQUIRE)) {
+		gpu->bgra_readback = false;
+	}
+#endif
 	snprintf(gpu->identity, sizeof(gpu->identity), "%s | %s | %s",
 		(const char *)glGetString(GL_VENDOR),
 		renderer,
@@ -760,6 +784,9 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open(
 		return NULL;
 	}
 	g_device = gpu;
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+	__atomic_store_n(&g_test_device_open, 1, __ATOMIC_RELEASE);
+#endif
 	return gpu;
 }
 
@@ -787,6 +814,9 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open_software_test(void) {
 		return NULL;
 	}
 	g_device = gpu;
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+	__atomic_store_n(&g_test_device_open, 1, __ATOMIC_RELEASE);
+#endif
 	return gpu;
 }
 #endif
@@ -796,14 +826,6 @@ const char *kleis_matrix_gpu_identity(struct kleis_matrix_gpu *gpu) {
 }
 
 static void destroy_target_gl(struct kleis_matrix_gpu_target *target) {
-	if (target->fence) {
-		glDeleteSync(target->fence);
-		target->fence = NULL;
-	}
-	if (target->pack_buffer) {
-		glDeleteBuffers(1, &target->pack_buffer);
-		target->pack_buffer = 0;
-	}
 	if (target->framebuffer) {
 		glDeleteFramebuffers(1, &target->framebuffer);
 		target->framebuffer = 0;
@@ -866,10 +888,6 @@ struct kleis_matrix_gpu_target *kleis_matrix_gpu_target_create(
 	glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, target->color);
 	GLenum complete = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	glGenBuffers(1, &target->pack_buffer);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, target->pack_buffer);
-	glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)width * height * 4, NULL, GL_STREAM_READ);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 	if (!atlas_valid || complete != GL_FRAMEBUFFER_COMPLETE || glGetError() != GL_NO_ERROR || !ensure_state(target)) {
@@ -883,23 +901,36 @@ struct kleis_matrix_gpu_target *kleis_matrix_gpu_target_create(
 	return target;
 }
 
-/* Queue the framebuffer's pixels into the pack buffer behind a fence. */
-static int32_t start_readback(struct kleis_matrix_gpu *gpu, struct kleis_matrix_gpu_target *target) {
+/* A frame the readback can go into now: this device's, the target's size,
+ * and not mapped (the GPU writes a pack buffer only while it is unmapped). */
+static bool frame_ready_for(struct kleis_matrix_gpu *gpu,
+		struct kleis_matrix_gpu_target *target, struct kleis_matrix_gpu_frame *frame) {
+	if (!gpu || gpu != g_device || !target || !frame || frame->mapped ||
+			frame->width != target->width || frame->height != target->height) {
+		set_error("the matrix gpu frame cannot take this readback");
+		return false;
+	}
+	return true;
+}
+
+/* Queue the framebuffer's pixels into the frame's pack buffer behind a fence. */
+static int32_t start_readback(struct kleis_matrix_gpu *gpu,
+		struct kleis_matrix_gpu_target *target, struct kleis_matrix_gpu_frame *frame) {
 	sg_reset_state_cache();
-	if (target->fence) {
-		glDeleteSync(target->fence);
-		target->fence = NULL;
+	if (frame->fence) {
+		glDeleteSync(frame->fence);
+		frame->fence = NULL;
 	}
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, target->framebuffer);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, target->pack_buffer);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, frame->pack_buffer);
 	glPixelStorei(GL_PACK_ALIGNMENT, 4);
 	glReadPixels(0, 0, target->width, target->height,
 		gpu->bgra_readback ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-	target->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	frame->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	glFlush();
-	if (!target->fence || glGetError() != GL_NO_ERROR) {
+	if (!frame->fence || glGetError() != GL_NO_ERROR) {
 		set_error("matrix gpu readback could not start");
 		return 0;
 	}
@@ -909,6 +940,7 @@ static int32_t start_readback(struct kleis_matrix_gpu *gpu, struct kleis_matrix_
 int32_t kleis_matrix_gpu_target_render(
 	struct kleis_matrix_gpu *gpu,
 	struct kleis_matrix_gpu_target *target,
+	struct kleis_matrix_gpu_frame *frame,
 	double time_seconds,
 	float fall_speed,
 	float cycle_speed,
@@ -918,6 +950,15 @@ int32_t kleis_matrix_gpu_target_render(
 		set_error("matrix gpu renderer is not initialized");
 		return 0;
 	}
+	if (!frame_ready_for(gpu, target, frame)) {
+		return 0;
+	}
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+	if (__atomic_exchange_n(&g_test_fail_next_render, false, __ATOMIC_ACQ_REL)) {
+		set_error("a test failed this render");
+		return 0;
+	}
+#endif
 	if (!ensure_state(target)) {
 		return 0;
 	}
@@ -1001,17 +1042,21 @@ int32_t kleis_matrix_gpu_target_render(
 	sg_end_pass();
 	sg_commit();
 	target->frame_count++;
-	return start_readback(gpu, target);
+	return start_readback(gpu, target, frame);
 }
 
 int32_t kleis_matrix_gpu_target_clear(
 	struct kleis_matrix_gpu *gpu,
 	struct kleis_matrix_gpu_target *target,
+	struct kleis_matrix_gpu_frame *frame,
 	float red,
 	float green,
 	float blue) {
 	if (!gpu || gpu != g_device || !target) {
 		set_error("matrix gpu renderer is not initialized");
+		return 0;
+	}
+	if (!frame_ready_for(gpu, target, frame)) {
 		return 0;
 	}
 	sg_reset_state_cache();
@@ -1023,55 +1068,200 @@ int32_t kleis_matrix_gpu_target_clear(
 	glClearColor(red, green, blue, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	return start_readback(gpu, target);
+	return start_readback(gpu, target, frame);
 }
 
-int32_t kleis_matrix_gpu_target_read(
-	struct kleis_matrix_gpu *gpu,
-	struct kleis_matrix_gpu_target *target,
-	uint32_t *pixels) {
-	if (!gpu || gpu != g_device || !target || !target->fence || !pixels) {
-		set_error("no matrix gpu readback is pending");
-		return 0;
+struct kleis_matrix_gpu_frame *kleis_matrix_gpu_frame_create(
+	struct kleis_matrix_gpu *gpu, int32_t width, int32_t height) {
+	if (!gpu || gpu != g_device || width <= 0 || height <= 0 || width > 16384 || height > 16384) {
+		set_error("invalid matrix gpu frame");
+		return NULL;
 	}
-	/* A second is far beyond any frame; a stuck GPU fails over to the CPU. */
-	GLenum waited = glClientWaitSync(target->fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000ull);
-	glDeleteSync(target->fence);
-	target->fence = NULL;
+	struct kleis_matrix_gpu_frame *frame = calloc(1, sizeof(*frame));
+	if (!frame) {
+		set_error("calloc failed");
+		return NULL;
+	}
+	frame->width = width;
+	frame->height = height;
+	sg_reset_state_cache();
+	glGenBuffers(1, &frame->pack_buffer);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, frame->pack_buffer);
+	glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)width * height * 4, NULL, GL_STREAM_READ);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	gpu->frames++;
+	if (!frame->pack_buffer || glGetError() != GL_NO_ERROR) {
+		set_error("matrix gpu frame allocation failed");
+		kleis_matrix_gpu_frame_destroy(gpu, frame);
+		return NULL;
+	}
+	return frame;
+}
+
+int32_t kleis_matrix_gpu_hands_off(struct kleis_matrix_gpu *gpu) {
+	return gpu && gpu == g_device && gpu->bgra_readback;
+}
+
+/* Waits for the frame's readback; a stuck GPU fails over to the CPU. */
+static bool wait_readback(struct kleis_matrix_gpu_frame *frame) {
+	if (!frame->fence) {
+		set_error("no matrix gpu readback is pending");
+		return false;
+	}
+	/* A second is far beyond any frame. */
+	GLenum waited = glClientWaitSync(frame->fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000ull);
+	glDeleteSync(frame->fence);
+	frame->fence = NULL;
 	if (waited != GL_ALREADY_SIGNALED && waited != GL_CONDITION_SATISFIED) {
 		set_error("matrix gpu readback did not complete");
+		return false;
+	}
+	return true;
+}
+
+static const uint32_t *map_frame(struct kleis_matrix_gpu_frame *frame) {
+	sg_reset_state_cache();
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, frame->pack_buffer);
+	const uint32_t *mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
+		(GLsizeiptr)frame->width * frame->height * 4, GL_MAP_READ_BIT);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	if (!mapped || glGetError() != GL_NO_ERROR) {
+		set_error("matrix gpu readback could not be mapped");
+		return NULL;
+	}
+	frame->mapped = mapped;
+	return mapped;
+}
+
+const uint32_t *kleis_matrix_gpu_frame_map(
+	struct kleis_matrix_gpu *gpu, struct kleis_matrix_gpu_frame *frame) {
+	if (!gpu || gpu != g_device || !frame || frame->mapped || !gpu->bgra_readback) {
+		set_error("this matrix gpu frame cannot be handed over");
+		return NULL;
+	}
+	if (!wait_readback(frame)) {
+		return NULL;
+	}
+	return map_frame(frame);
+}
+
+int32_t kleis_matrix_gpu_frame_unmap(
+	struct kleis_matrix_gpu *gpu, struct kleis_matrix_gpu_frame *frame) {
+	if (!gpu || gpu != g_device || !frame || !frame->mapped) {
+		set_error("the matrix gpu frame is not mapped");
 		return 0;
 	}
 	sg_reset_state_cache();
-	size_t row = (size_t)target->width * 4;
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, target->pack_buffer);
-	const uint8_t *mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)(row * target->height), GL_MAP_READ_BIT);
-	if (!mapped) {
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-		set_error("matrix gpu readback could not be mapped");
-		return 0;
-	}
-	/* GL rows start at the bottom; frames start at the top. */
-	for (int32_t y = 0; y < target->height; y++) {
-		const uint8_t *src = mapped + row * (size_t)(target->height - 1 - y);
-		uint32_t *dst = pixels + (size_t)target->width * y;
-		if (gpu->bgra_readback) {
-			memcpy(dst, src, row);
-		} else {
-			for (int32_t x = 0; x < target->width; x++) {
-				const uint8_t *p = src + (size_t)x * 4;
-				dst[x] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
-			}
-		}
-	}
-	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, frame->pack_buffer);
+	GLboolean kept = glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-	if (glGetError() != GL_NO_ERROR) {
-		set_error("matrix gpu readback failed");
+	frame->mapped = NULL;
+	if (!kept || glGetError() != GL_NO_ERROR) {
+		set_error("the matrix gpu frame's contents were lost while mapped");
 		return 0;
 	}
 	return 1;
 }
+
+int32_t kleis_matrix_gpu_frame_read(
+	struct kleis_matrix_gpu *gpu,
+	struct kleis_matrix_gpu_frame *frame,
+	uint32_t *pixels) {
+	if (!gpu || gpu != g_device || !frame || frame->mapped || !pixels) {
+		set_error("no matrix gpu readback can be copied");
+		return 0;
+	}
+	if (!wait_readback(frame)) {
+		return 0;
+	}
+	const uint32_t *mapped = map_frame(frame);
+	if (!mapped) {
+		return 0;
+	}
+	/* Rows are already top first. */
+	size_t count = (size_t)frame->width * frame->height;
+	if (gpu->bgra_readback) {
+		memcpy(pixels, mapped, count * 4);
+	} else {
+		const uint8_t *bytes = (const uint8_t *)mapped;
+		for (size_t i = 0; i < count; i++) {
+			const uint8_t *p = bytes + i * 4;
+			pixels[i] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+		}
+	}
+	return kleis_matrix_gpu_frame_unmap(gpu, frame);
+}
+
+void kleis_matrix_gpu_frame_destroy(
+	struct kleis_matrix_gpu *gpu, struct kleis_matrix_gpu_frame *frame) {
+	if (!frame) {
+		return;
+	}
+	if (gpu && gpu == g_device) {
+		sg_reset_state_cache();
+		if (frame->mapped) {
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, frame->pack_buffer);
+			glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		}
+		if (frame->fence) {
+			glDeleteSync(frame->fence);
+		}
+		if (frame->pack_buffer) {
+			glDeleteBuffers(1, &frame->pack_buffer);
+		}
+		if (gpu->frames > 0) {
+			gpu->frames--;
+		}
+	}
+	free(frame);
+}
+
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+void kleis_matrix_gpu_test_fail_next_render(void) {
+	__atomic_store_n(&g_test_fail_next_render, true, __ATOMIC_RELEASE);
+}
+
+int32_t kleis_matrix_gpu_test_device_open(void) {
+	return __atomic_load_n(&g_test_device_open, __ATOMIC_ACQUIRE);
+}
+
+void kleis_matrix_gpu_test_copy_readback(int32_t copy) {
+	__atomic_store_n(&g_test_copy_readback, copy != 0, __ATOMIC_RELEASE);
+}
+
+/* Black, with 4x4 marks at the frame's top left (red), top right (green) and
+ * bottom left (blue), then its readback: window row 0 is the frame's top. */
+int32_t kleis_matrix_gpu_test_marks(
+	struct kleis_matrix_gpu *gpu,
+	struct kleis_matrix_gpu_target *target,
+	struct kleis_matrix_gpu_frame *frame) {
+	if (!frame_ready_for(gpu, target, frame) || target->width < 8 || target->height < 8) {
+		return 0;
+	}
+	sg_reset_state_cache();
+	glBindFramebuffer(GL_FRAMEBUFFER, target->framebuffer);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glViewport(0, 0, target->width, target->height);
+	glDisable(GL_SCISSOR_TEST);
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_SCISSOR_TEST);
+	const struct { int32_t x, y; float r, g, b; } marks[] = {
+		{ 0, 0, 1, 0, 0 },
+		{ target->width - 4, 0, 0, 1, 0 },
+		{ 0, target->height - 4, 0, 0, 1 },
+	};
+	for (size_t i = 0; i < 3; i++) {
+		glScissor(marks[i].x, marks[i].y, 4, 4);
+		glClearColor(marks[i].r, marks[i].g, marks[i].b, 1);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+	glDisable(GL_SCISSOR_TEST);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	return start_readback(gpu, target, frame);
+}
+#endif
 
 void kleis_matrix_gpu_target_destroy(
 	struct kleis_matrix_gpu *gpu, struct kleis_matrix_gpu_target *target) {
@@ -1104,6 +1294,9 @@ void kleis_matrix_gpu_close(struct kleis_matrix_gpu *gpu) {
 		g_sokol_ready = false;
 	}
 	g_device = NULL;
+#ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
+	__atomic_store_n(&g_test_device_open, 0, __ATOMIC_RELEASE);
+#endif
 	destroy_device(gpu);
 }
 

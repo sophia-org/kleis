@@ -30,6 +30,13 @@ type
     width*, height*: int
     cellSize*: int
 
+  MatrixGpuFrame* = object
+    ## One frame's readback buffer. It belongs, like the device, to the
+    ## worker thread: only that thread may map, unmap or destroy it, though
+    ## any thread may read a mapping while it lasts.
+    handle: pointer
+    width*, height*: int
+
 proc gpuOpen(
   renderNode: cstring, major, minor: int64
 ): pointer {.importc: "kleis_matrix_gpu_open", header: "kleis/matrix_gpu_shim.h".}
@@ -52,8 +59,55 @@ proc gpuTargetCreate(
   importc: "kleis_matrix_gpu_target_create", header: "kleis/matrix_gpu_shim.h"
 .}
 
+proc gpuFrameCreate(
+  handle: pointer, width, height: int32
+): pointer {.
+  importc: "kleis_matrix_gpu_frame_create", header: "kleis/matrix_gpu_shim.h"
+.}
+
+proc gpuHandsOff(
+  handle: pointer
+): int32 {.importc: "kleis_matrix_gpu_hands_off", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuFrameMap(
+  handle, frame: pointer
+): ptr UncheckedArray[uint32] {.
+  importc: "kleis_matrix_gpu_frame_map", header: "kleis/matrix_gpu_shim.h"
+.}
+
+proc gpuFrameUnmap(
+  handle, frame: pointer
+): int32 {.importc: "kleis_matrix_gpu_frame_unmap", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuFrameRead(
+  handle, frame: pointer, pixels: ptr UncheckedArray[uint32]
+): int32 {.importc: "kleis_matrix_gpu_frame_read", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuFrameDestroy(
+  handle, frame: pointer
+) {.importc: "kleis_matrix_gpu_frame_destroy", header: "kleis/matrix_gpu_shim.h".}
+
+when defined(kleisGpuSoftwareTest):
+  proc gpuTestFailNextRender() {.
+    importc: "kleis_matrix_gpu_test_fail_next_render", header: "kleis/matrix_gpu_shim.h"
+  .}
+
+  proc gpuTestDeviceOpen(): int32 {.
+    importc: "kleis_matrix_gpu_test_device_open", header: "kleis/matrix_gpu_shim.h"
+  .}
+
+  proc gpuTestCopyReadback(
+    copy: int32
+  ) {.
+    importc: "kleis_matrix_gpu_test_copy_readback", header: "kleis/matrix_gpu_shim.h"
+  .}
+
+  proc gpuTestMarks(
+    handle, target, frame: pointer
+  ): int32 {.importc: "kleis_matrix_gpu_test_marks", header: "kleis/matrix_gpu_shim.h".}
+
 proc gpuTargetRender(
-  handle, target: pointer,
+  handle, target, frame: pointer,
   timeSeconds: cdouble,
   fallSpeed, cycleSpeed, raindropLength, brightnessDecay: cfloat,
 ): int32 {.
@@ -61,12 +115,8 @@ proc gpuTargetRender(
 .}
 
 proc gpuTargetClear(
-  handle, target: pointer, red, green, blue: cfloat
+  handle, target, frame: pointer, red, green, blue: cfloat
 ): int32 {.importc: "kleis_matrix_gpu_target_clear", header: "kleis/matrix_gpu_shim.h".}
-
-proc gpuTargetRead(
-  handle, target: pointer, pixels: ptr UncheckedArray[uint32]
-): int32 {.importc: "kleis_matrix_gpu_target_read", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuTargetDestroy(
   handle, target: pointer
@@ -98,6 +148,9 @@ proc isOpen*(gpu: MatrixGpu): bool =
 
 proc isNil*(target: MatrixGpuTarget): bool =
   target.handle.isNil
+
+proc isNil*(frame: MatrixGpuFrame): bool =
+  frame.handle.isNil
 
 proc openMatrixGpu*(renderNode: string, major, minor: int64): MatrixGpu =
   ## Exactly the granted node, or nothing: check isOpen, then the last error.
@@ -135,19 +188,70 @@ proc createTarget*(
       handle: handle, width: width, height: height, cellSize: atlas.cellWidth
     )
 
+proc createFrame*(gpu: MatrixGpu, width, height: int): MatrixGpuFrame =
+  ## A readback buffer for frames of this size; check isNil.
+  if gpu.isOpen:
+    let handle = gpuFrameCreate(gpu.handle, width.int32, height.int32)
+    if not handle.isNil:
+      result = MatrixGpuFrame(handle: handle, width: width, height: height)
+
+proc handsOff*(gpu: MatrixGpu): bool =
+  ## Whether a mapped frame is the frame itself (BGRA readback).
+  gpu.isOpen and gpuHandsOff(gpu.handle) != 0
+
+proc map*(gpu: MatrixGpu, frame: MatrixGpuFrame): ptr UncheckedArray[uint32] =
+  ## Waits for the frame's readback and maps it: 0xAARRGGBB words, top row
+  ## first, valid and unchanged until unmap or destroy. Nil on failure.
+  gpuFrameMap(gpu.handle, frame.handle)
+
+proc unmap*(gpu: MatrixGpu, frame: MatrixGpuFrame): bool =
+  ## False when the mapping's contents were lost or GL failed.
+  gpuFrameUnmap(gpu.handle, frame.handle) != 0
+
+proc read*(
+    gpu: MatrixGpu, frame: MatrixGpuFrame, pixels: ptr UncheckedArray[uint32]
+): bool =
+  ## Waits for the frame's readback and copies it as 0xAARRGGBB words.
+  gpuFrameRead(gpu.handle, frame.handle, pixels) != 0
+
+proc destroy*(gpu: MatrixGpu, frame: var MatrixGpuFrame) =
+  ## Unmaps it if mapped, then frees it.
+  if not frame.handle.isNil:
+    gpuFrameDestroy(gpu.handle, frame.handle)
+    frame.handle = nil
+
+when defined(kleisGpuSoftwareTest):
+  proc failNextGpuRender*() =
+    ## Tests only: the open device's next render fails, as a GPU fault would.
+    gpuTestFailNextRender()
+
+  proc gpuDeviceOpen*(): bool =
+    ## Tests only: whether a device is open, from any thread.
+    gpuTestDeviceOpen() != 0
+
+  proc copyGpuReadback*(copy: bool) =
+    ## Tests only: devices opened from now copy an RGBA readback.
+    gpuTestCopyReadback(int32(copy))
+
+  proc marks*(gpu: MatrixGpu, target: MatrixGpuTarget, frame: MatrixGpuFrame): bool =
+    ## Tests only: asymmetric corner marks and their readback.
+    gpuTestMarks(gpu.handle, target.handle, frame.handle) != 0
+
 proc render*(
     gpu: MatrixGpu,
     target: MatrixGpuTarget,
+    frame: MatrixGpuFrame,
     motion: MatrixMotion,
     seconds, elapsedSeconds: float,
 ): bool =
-  ## Queues the frame at `seconds` and its readback. The shaders step glyph
-  ## age and brightness once per frame, so those two take the share of the
-  ## per-reference-frame rates that `elapsedSeconds` covers.
+  ## Queues the frame at `seconds` and its readback into `frame`. The shaders
+  ## step glyph age and brightness once per frame, so those two take the
+  ## share of the per-reference-frame rates that `elapsedSeconds` covers.
   let frames = max(elapsedSeconds, 0.0) / MatrixReferenceFrameSeconds
   gpuTargetRender(
     gpu.handle,
     target.handle,
+    frame.handle,
     cdouble(seconds),
     cfloat(motion.fallSpeed),
     cfloat(max(motion.cycleSpeed, 0.001) * frames),
@@ -155,21 +259,18 @@ proc render*(
     cfloat(decayBlend(motion.brightnessDecay, elapsedSeconds)),
   ) != 0
 
-proc clear*(gpu: MatrixGpu, target: MatrixGpuTarget, color: uint32): bool =
-  ## Queues one opaque 0xRRGGBB colour and its readback.
+proc clear*(
+    gpu: MatrixGpu, target: MatrixGpuTarget, frame: MatrixGpuFrame, color: uint32
+): bool =
+  ## Queues one opaque 0xRRGGBB colour and its readback into `frame`.
   gpuTargetClear(
     gpu.handle,
     target.handle,
+    frame.handle,
     cfloat(float((color shr 16) and 0xff) / 255.0),
     cfloat(float((color shr 8) and 0xff) / 255.0),
     cfloat(float(color and 0xff) / 255.0),
   ) != 0
-
-proc read*(
-    gpu: MatrixGpu, target: MatrixGpuTarget, pixels: ptr UncheckedArray[uint32]
-): bool =
-  ## Waits for the last queued frame and writes it as 0xAARRGGBB words.
-  gpuTargetRead(gpu.handle, target.handle, pixels) != 0
 
 proc destroy*(gpu: MatrixGpu, target: var MatrixGpuTarget) =
   if not target.handle.isNil:

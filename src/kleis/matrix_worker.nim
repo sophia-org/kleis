@@ -7,17 +7,27 @@
 ## older unleased one; a leased frame belongs to the provider until it is
 ## released, whatever happens to its output or view meanwhile.
 ##
+## A slot's frame lives in one of two places. On the GPU with BGRA readback
+## it is the slot's own readback buffer, mapped: the provider uploads straight
+## from the mapping, which stays unchanged until the slot is free again and the
+## worker unmaps it for the next readback. Otherwise it is a heap buffer the
+## worker writes or copies into. Only the worker thread maps, unmaps or deletes
+## a readback buffer, always outside the lock; a release on the provider's
+## thread never touches GL. A GPU failure stops new GPU work at once but keeps
+## the device until every frame still leased from it has been released.
+##
 ## Storage bounds per output of W x H pixels:
-## - two slot buffers of W * H * 4 bytes (the frames the provider uploads);
-## - on the GPU: a W x H RGBA8 renderbuffer, a W * H * 4 byte pack buffer,
-##   four grid-sized state textures and one glyph atlas row;
+## - two slot frames of W * H * 4 bytes (the frames the provider uploads), each
+##   a readback buffer, a heap buffer, or on the GPU without BGRA readback both;
+## - on the GPU: a W x H RGBA8 renderbuffer, four grid-sized state textures
+##   and one glyph atlas row;
 ## - on the CPU: one float per cell and one glyph atlas row per cell size.
 ## After a resize or removal, the old geometry's slots that are still leased
 ## or rendering stay allocated until released or finished: at most two more.
 ## The worker drops every other per-output resource of a removed or resized
 ## output on its own thread (GPU targets, CPU fields, timings and atlas sizes
 ## no output uses), so churn returns to these bounds; liveResources counts
-## them.
+## them, readback buffers included until they are deleted.
 
 import std/[locks, monotimes, options, os, posix, strutils, tables]
 import ./cli
@@ -45,6 +55,7 @@ type
   LiveResources* = object
     ## What the worker holds now; it returns to the current targets' bounds.
     slots*: int ## slot records, including detached ones not yet released
+    frames*: int ## readback buffers, including those still leased or retiring
     gpuTargets*: int
     cpuOutputs*: int
     timings*: int
@@ -63,10 +74,13 @@ type
   Slot = object
     state: SlotState
     attached: bool ## false once its output is removed or resized
-    width, height: int
+    width, height: int ## of the frame `pixels` holds
     viewGeneration: uint64
     sequence: uint64
-    pixels: ptr UncheckedArray[uint32]
+    pixels: ptr UncheckedArray[uint32] ## the frame: `heap`, or `frame` mapped
+    heap: ptr UncheckedArray[uint32] ## owned; nil until a heap frame is needed
+    frame: MatrixGpuFrame ## the worker's readback buffer, if any
+    mapped: bool ## `pixels` is `frame`'s mapping
 
   FrameLease* = object
     ## A frame the provider holds. Its pixels stay valid, unchanged, until
@@ -95,6 +109,7 @@ type
     backend: MatrixBackend
     targetsVersion: uint64 ## increases with every setTargets
     slots: int ## live slot records
+    retired: seq[ptr Slot] ## freed slots whose readback buffer the worker deletes
     live: LiveResources ## the worker's own resources, as last reported
     wakeFd: cint ## provider to worker
     readyFd: cint ## worker to provider
@@ -163,8 +178,13 @@ proc newSlot(s: ptr Shared): ptr Slot =
   inc s.slots
 
 proc freeSlot(s: ptr Shared, slot: ptr Slot) =
-  if not slot.pixels.isNil:
-    deallocShared(slot.pixels)
+  ## A slot with a readback buffer goes to the worker, which deletes the
+  ## buffer on its own thread and then frees the record.
+  if not slot.frame.isNil:
+    s.retired.add slot
+    return
+  if not slot.heap.isNil:
+    deallocShared(slot.heap)
   freeShared(slot)
   dec s.slots
 
@@ -199,7 +219,8 @@ type
   Renderer = object
     config: MatrixWorkerConfig
     backend: MatrixBackend
-    gpu: MatrixGpu
+    gpu: MatrixGpu ## kept open after a failure while readback buffers remain
+    frames: int ## readback buffers alive
     gpuOutputs: Table[uint64, GpuOutput]
     cpuOutputs: Table[uint64, CpuOutput]
     atlases: Table[int, MatrixGlyphAtlas] ## by cell size
@@ -240,17 +261,72 @@ proc startRenderer(config: MatrixWorkerConfig): Renderer =
     else:
       log("cpu (gpu unavailable: " & matrixGpuLastError() & ")")
 
-proc stopGpu(r: var Renderer) =
+proc stopTargets(r: var Renderer) =
   for output in r.gpuOutputs.mvalues:
     r.gpu.destroy(output.target)
   r.gpuOutputs.clear()
-  r.gpu.close()
+
+proc closeGpu(r: var Renderer) =
+  ## Only once no readback buffer is left: a leased one may still be mapped.
+  r.stopTargets()
+  if r.frames == 0:
+    r.gpu.close()
 
 proc fallBack(r: var Renderer) =
-  ## A GPU failure is final for this run: the CPU renders from here on.
+  ## A GPU failure is final for this run: the CPU renders from here on. The
+  ## device stays open until every readback buffer is gone (drainGpu).
   log("gpu failed (" & matrixGpuLastError() & "); continuing on the cpu")
-  r.stopGpu()
+  r.stopTargets()
   r.backend = mbCpu
+
+proc dropFrame(r: var Renderer, slot: ptr Slot) =
+  ## Deletes the slot's readback buffer, unmapping it first.
+  if slot.frame.isNil:
+    return
+  if slot.mapped:
+    slot.pixels = nil
+    slot.mapped = false
+  r.gpu.destroy(slot.frame)
+  dec r.frames
+
+proc unmapFrame(r: var Renderer, slot: ptr Slot) =
+  ## Ends the slot's mapping before its buffer takes another readback. Lost
+  ## contents cannot recall a frame already uploaded; the buffer is replaced
+  ## and the loss reported.
+  if not slot.mapped:
+    return
+  slot.pixels = nil
+  slot.mapped = false
+  if not r.gpu.unmap(slot.frame):
+    log("readback mapping lost (" & matrixGpuLastError() & "); replacing its buffer")
+    r.gpu.destroy(slot.frame)
+    dec r.frames
+
+proc heapFrame(r: var Renderer, slot: ptr Slot, width, height: int) =
+  ## Points the slot at a heap frame of this size. On the CPU the slot keeps
+  ## no readback buffer.
+  r.unmapFrame(slot)
+  if r.backend != mbGpu:
+    r.dropFrame(slot)
+  if slot.heap.isNil or slot.width != width or slot.height != height:
+    if not slot.heap.isNil:
+      deallocShared(slot.heap)
+    slot.heap = cast[ptr UncheckedArray[uint32]](allocShared(width * height * 4))
+  slot.pixels = slot.heap
+  slot.width = width
+  slot.height = height
+
+proc readbackFrame(r: var Renderer, slot: ptr Slot, width, height: int): bool =
+  ## Gives the slot an unmapped readback buffer of this size.
+  r.unmapFrame(slot)
+  if not slot.frame.isNil and (slot.frame.width != width or slot.frame.height != height):
+    r.dropFrame(slot)
+  if slot.frame.isNil:
+    slot.frame = r.gpu.createFrame(width, height)
+    if slot.frame.isNil:
+      return false
+    inc r.frames
+  true
 
 proc reconcile(r: var Renderer, targets: seq[MatrixTarget]) =
   ## Keeps per-output state only for the current targets at their current
@@ -297,6 +373,7 @@ proc reconcile(r: var Renderer, targets: seq[MatrixTarget]) =
 
 proc live(r: Renderer): LiveResources =
   LiveResources(
+    frames: r.frames,
     gpuTargets: r.gpuOutputs.len,
     cpuOutputs: r.cpuOutputs.len,
     timings: r.lastSeconds.len,
@@ -315,6 +392,7 @@ proc elapsed(r: var Renderer, allocation: uint64, seconds: float): float =
   r.lastSeconds[allocation] = seconds
 
 proc renderCpu(r: var Renderer, job: Job, seconds: float) =
+  r.heapFrame(job.slot, job.width, job.height)
   if job.view.kind == vkSolid:
     job.fill()
     return
@@ -348,26 +426,49 @@ proc gpuTarget(r: var Renderer, job: Job): MatrixGpuTarget =
   output.target
 
 proc renderAll(r: var Renderer, jobs: seq[Job], seconds: float) =
-  ## Queues every output's GPU frame before waiting for any of them.
-  var queued: seq[(Job, MatrixGpuTarget)]
+  ## Queues every output's GPU frame before waiting for any of them. With
+  ## BGRA readback a slot's frame is its readback buffer, mapped; otherwise
+  ## the readback is copied into the slot's heap frame.
+  var queued: seq[Job]
   if r.backend == mbGpu:
     for job in jobs:
       if job.view.kind == vkSolid:
+        r.heapFrame(job.slot, job.width, job.height)
         job.fill()
         continue
       let target = r.gpuTarget(job)
-      if target.isNil or
+      if target.isNil or not r.readbackFrame(job.slot, job.width, job.height) or
           not r.gpu.render(
-            target, r.config.motion, seconds, r.elapsed(job.allocation, seconds)
+            target,
+            job.slot.frame,
+            r.config.motion,
+            seconds,
+            r.elapsed(job.allocation, seconds),
           ):
         r.fallBack()
         break
-      queued.add((job, target))
+      queued.add job
     if r.backend == mbGpu:
-      for (job, target) in queued:
-        if not r.gpu.read(target, job.slot.pixels):
-          r.fallBack()
-          break
+      let handsOff = r.gpu.handsOff
+      for job in queued:
+        let slot = job.slot
+        if handsOff:
+          let mapping = r.gpu.map(slot.frame)
+          if mapping.isNil:
+            r.fallBack()
+            break
+          if not slot.heap.isNil:
+            deallocShared(slot.heap)
+            slot.heap = nil
+          slot.pixels = mapping
+          slot.mapped = true
+          slot.width = job.width
+          slot.height = job.height
+        else:
+          r.heapFrame(slot, job.width, job.height)
+          if not r.gpu.read(slot.frame, slot.pixels):
+            r.fallBack()
+            break
     if r.backend == mbGpu:
       return
   for job in jobs:
@@ -388,13 +489,7 @@ proc collect(s: ptr Shared, now: int64): seq[Job] =
     if slot.isNil:
       continue
     let target = output.target
-    if slot.pixels.isNil or slot.width != target.width or slot.height != target.height:
-      if not slot.pixels.isNil:
-        deallocShared(slot.pixels)
-      slot.pixels =
-        cast[ptr UncheckedArray[uint32]](allocShared(target.width * target.height * 4))
-      slot.width = target.width
-      slot.height = target.height
+    # The worker gives it a frame of the target's size outside the lock.
     slot.state = ssRendering
     slot.viewGeneration = s.viewGeneration
     output.due = false
@@ -446,6 +541,46 @@ proc publish(s: ptr Shared, jobs: seq[Job]): bool =
           other.state = ssFree
     result = true
 
+proc drainRetired(r: var Renderer, s: ptr Shared) =
+  ## Deletes the readback buffers of freed slots, then frees the slots. On
+  ## the worker thread with no lock held while GL runs.
+  var retired: seq[ptr Slot]
+  withLock s.lock:
+    swap(retired, s.retired)
+  if retired.len == 0:
+    return
+  for slot in retired:
+    r.dropFrame(slot)
+  withLock s.lock:
+    for slot in retired:
+      s.freeSlot(slot)
+
+proc drainGpu(r: var Renderer, s: ptr Shared, all = false) =
+  ## After a GPU failure (or with `all`, at stop): deletes the readback
+  ## buffers of every slot the provider does not hold, dropping their ready
+  ## frames, and closes the device once none is left. A leased slot keeps its
+  ## buffer, mapped, until released.
+  if not r.gpu.isOpen or (r.backend == mbGpu and not all):
+    return
+  var claimed: seq[ptr Slot]
+  withLock s.lock:
+    for output in s.outputs.mitems:
+      for slot in output.slots:
+        if not slot.frame.isNil and slot.state in {ssFree, ssReady}:
+          if slot.state == ssReady:
+            output.due = true
+          slot.state = ssRendering
+          claimed.add slot
+  for slot in claimed:
+    r.dropFrame(slot)
+    slot.pixels = slot.heap
+  withLock s.lock:
+    for slot in claimed:
+      slot.state = ssFree
+  r.drainRetired(s)
+  if r.frames == 0:
+    r.closeGpu()
+
 proc workerMain(s: ptr Shared) {.thread.} =
   {.cast(gcsafe).}:
     var renderer = startRenderer(s.config)
@@ -470,8 +605,11 @@ proc workerMain(s: ptr Shared) {.thread.} =
           targets = some(current)
       if targets.isSome:
         renderer.reconcile(targets.get)
-        withLock s.lock:
-          s.live = renderer.live
+      renderer.drainRetired(s)
+      renderer.drainGpu(s)
+      withLock s.lock:
+        s.backend = renderer.backend
+        s.live = renderer.live
       if jobs.len == 0:
         var wake = TPollfd(fd: s.wakeFd, events: POLLIN)
         if poll(addr wake, 1, timeout) > 0:
@@ -482,12 +620,18 @@ proc workerMain(s: ptr Shared) {.thread.} =
       var ready: bool
       withLock s.lock:
         s.backend = renderer.backend
-        s.live = renderer.live
         ready = publish(s, jobs)
+      renderer.drainRetired(s)
+      withLock s.lock:
+        s.live = renderer.live
       if ready:
         signal(s.readyFd)
-    if renderer.backend == mbGpu:
-      renderer.stopGpu()
+    # Every lease has been released (stop's contract): every buffer can go.
+    renderer.drainRetired(s)
+    renderer.drainGpu(s, all = true)
+    if renderer.gpu.isOpen:
+      log("stopping with " & $renderer.frames & " readback buffers still leased")
+      renderer.closeGpu()
 
 # The provider's side. Every call is short and never waits for rendering.
 
