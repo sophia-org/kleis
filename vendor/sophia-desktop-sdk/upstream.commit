@@ -1,14 +1,22 @@
-tree f39def9534e725898e69b551a464a68261a2feb9
-parent 3f2185ea73738ea4e755599d67517510fc55c502
-author Mason Green <mason@greenm01.net> 1791088387 -0400
-committer Mason Green <mason@greenm01.net> 1791088387 -0400
+tree bf210c52114eeda8b6cdf408ea1a1797af98085e
+parent a5dc5895baaf0928594c3f084616f804e6fdab4e
+author Mason Green <mason@greenm01.net> 1791149821 -0400
+committer Mason Green <mason@greenm01.net> 1791149821 -0400
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasHXAxsUgAAAAAAEAA5t
- YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGJ5MgEAurNDlxdGdzwq8fLKuj0v
- dei6kZk0DQpWAilEmgQ+gkYBAOKxqRgKqI4ICViHLj0D3iX9R6qBrSZOnF7ISiHF
- JWIL
- =Bdmi
+ iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasLG/RsUgAAAAAAEAA5t
+ YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGJVqgEApa5neF7LrC5OYJnJZ8OT
+ YXyZXqZIxK7e8BX6gEGl/bgBAJwJB+BnL3VIbll9W0QIRIXvKKYiLv7MvbN/T6zT
+ JKsB
+ =wB57
  -----END PGP SIGNATURE-----
 
-Expose queued upload cancellation to the caller poll loop
+Control borrowed writes under backpressure, flush, close and early reply
+
+A 64 KiB borrowed write meets real EAGAIN and still sends exact bytes; a
+partly sent borrowed write is sent whole before its flush; a closed peer
+ends the client with a stable error and no new borrow; and an early reply
+to a write still being sent fails the client. The header now names a
+successful flush and a terminal wire failure as release points, and
+PROVENANCE records the slot and client layout growth. Review notes from
+Codex.

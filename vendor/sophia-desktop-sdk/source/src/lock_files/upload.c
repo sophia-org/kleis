@@ -37,9 +37,11 @@ static int write_drive(struct sophia_lc_client *c) {
     if (w->op.active)
       continue;
     n = lc_cap(c, c->upload_size - c->upload_issued, 23, c->upload_iounit);
-    r = sophia_9p_write(c->wire, c->upload_fid,
-                        c->upload_offset - c->upload_sent + c->upload_issued,
-                        c->upload_data + c->upload_issued, n, &w->op.handle);
+    /* upload_data is borrowed until every issued write settles, which
+     * outlasts sending it, so the wire sends from it without a copy. */
+    r = sophia_9p_write_borrowed(c->wire, c->upload_fid,
+                                 c->upload_offset - c->upload_sent + c->upload_issued,
+                                 c->upload_data + c->upload_issued, n, &w->op.handle);
     if (r)
       return r == SOPHIA_9P_BUSY ? 0 : r;
     w->op.active = 1;

@@ -116,7 +116,7 @@ int sophia_9p_lopen(struct sophia_9p_client *c, uint32_t fid, uint32_t flags,
     return 0;
 }
 static int io_request(struct sophia_9p_client *c, uint8_t type, uint32_t fid, uint64_t offset,
-                      const void *data, size_t count, struct sophia_9p_handle *h)
+                      const void *data, size_t count, int borrow, struct sophia_9p_handle *h)
 {
     int slot, r = p9_available(c, &slot);
     uint8_t *b;
@@ -126,13 +126,19 @@ static int io_request(struct sophia_9p_client *c, uint8_t type, uint32_t fid, ui
         return SOPHIA_9P_ARGUMENT;
     if (type == 116 && count > c->msize - 11u)
         count = c->msize - 11u;
-    r = p9_begin(c, type, 16 + (type == 118 ? count : 0), slot, h, &b);
+    r = p9_begin(c, type, 16 + (type == 118 && !borrow ? count : 0), slot, h, &b);
     if (r)
         return r;
     p9_put(b, fid, 4);
     p9_put(b + 4, offset, 8);
     p9_put(b + 12, count, 4);
-    if (type == 118 && count)
+    if (type == 118 && count && borrow) {
+        /* The header names the whole message; the payload follows it from
+         * the caller's bytes when the slot is sent. */
+        c->slots[slot].bytes += count;
+        p9_put(b - 7, c->slots[slot].bytes, 4);
+        c->slots[slot].borrowed = data;
+    } else if (type == 118 && count)
         memcpy(b + 16, data, count);
     c->slots[slot].count = (uint32_t)count;
     return 0;
@@ -140,12 +146,17 @@ static int io_request(struct sophia_9p_client *c, uint8_t type, uint32_t fid, ui
 int sophia_9p_read(struct sophia_9p_client *c, uint32_t f, uint64_t o, uint32_t n,
                    struct sophia_9p_handle *h)
 {
-    return io_request(c, 116, f, o, NULL, n, h);
+    return io_request(c, 116, f, o, NULL, n, 0, h);
 }
 int sophia_9p_write(struct sophia_9p_client *c, uint32_t f, uint64_t o, const void *b, size_t n,
                     struct sophia_9p_handle *h)
 {
-    return io_request(c, 118, f, o, b, n, h);
+    return io_request(c, 118, f, o, b, n, 0, h);
+}
+int sophia_9p_write_borrowed(struct sophia_9p_client *c, uint32_t f, uint64_t o, const void *b,
+                             size_t n, struct sophia_9p_handle *h)
+{
+    return io_request(c, 118, f, o, b, n, 1, h);
 }
 int sophia_9p_clunk(struct sophia_9p_client *c, uint32_t f, struct sophia_9p_handle *h)
 {
