@@ -74,21 +74,72 @@
       # The Nimble package store the reviewed build used, as ~/.nimble/pkgs2.
       nimPackages = pkgs.linkFarm "kleis-nim-packages"
         (lib.mapAttrsToList (name: p: { name = p.dir; path = nimPackage name p; }) reviewed);
+
+      # A private Nimble home with the reviewed packages and the pinned registry.
+      # Its path is fixed (under the build's or shell's own TMPDIR): Nim keeps
+      # its cache beneath HOME, and a random path changes the type-info hashes
+      # in the binary.
+      nimbleHome = ''
+        export HOME="''${TMPDIR:-/tmp}/kleis-nix-home"
+        rm -rf "$HOME"
+        mkdir -p "$HOME/.nimble/pkgs2"
+        cp -rL ${nimPackages}/. "$HOME/.nimble/pkgs2/"
+        cp ${registry}/packages.json "$HOME/.nimble/packages_official.json"
+        chmod -R u+w "$HOME/.nimble"
+      '';
+      nimble = "nimble --offline --useSystemNim";
+      tools = [ pkgs.nim pkgs.nimble pkgs.nph ];
+
+      # Stage 2 (measurement): kleis built by its own nimble build task inside
+      # Nix's sandbox, with the unit tests as its check phase. The bwrap-isolated
+      # release build remains the deliverable; this binary links /nix/store.
+      kleis = pkgs.gcc14Stdenv.mkDerivation {
+        pname = "kleis";
+        version = "0.0.0-nix-measurement";
+        src = self;
+        nativeBuildInputs = tools;
+        dontConfigure = true;
+        buildPhase = ''
+          runHook preBuild
+          ${nimbleHome}
+          ${nimble} build
+          runHook postBuild
+        '';
+        doCheck = true;
+        checkPhase = ''
+          runHook preCheck
+          ${nimble} test
+          runHook postCheck
+        '';
+        installPhase = ''
+          runHook preInstall
+          install -Dm755 kleis $out/bin/kleis
+          runHook postInstall
+        '';
+      };
     in
     {
-      packages.${system}.nim-packages = nimPackages;
+      packages.${system} = {
+        inherit kleis;
+        nim-packages = nimPackages;
+        default = kleis;
+      };
+
+      checks.${system} = {
+        inherit kleis;
+        format = pkgs.runCommand "kleis-format-check" { nativeBuildInputs = tools; } ''
+          ${nimbleHome}
+          cp -r ${self}/. source && chmod -R u+w source && cd source
+          ${nimble} fmtCheck
+          touch $out
+        '';
+      };
 
       # Tools and environment only: this shell gives no filesystem, device or
       # network isolation. The bwrap-isolated product build stays the gate.
       devShells.${system}.default = pkgs.mkShell.override { stdenv = pkgs.gcc14Stdenv; } {
         packages = [ pkgs.nim pkgs.nimble pkgs.nph pkgs.git ];
-        shellHook = ''
-          export HOME="$(mktemp -d "''${TMPDIR:-/tmp}/kleis-nix-home.XXXXXXXX")"
-          mkdir -p "$HOME/.nimble/pkgs2"
-          cp -rL ${nimPackages}/. "$HOME/.nimble/pkgs2/"
-          cp ${registry}/packages.json "$HOME/.nimble/packages_official.json"
-          chmod -R u+w "$HOME/.nimble"
-        '';
+        shellHook = nimbleHome;
       };
     };
 }
