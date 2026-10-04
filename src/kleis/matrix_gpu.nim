@@ -1,48 +1,80 @@
+## Offscreen Matrix rendering on the render node Sophia grants
+## (matrix_gpu_shim.c). A device and its targets belong to the one thread that
+## opened them: the matrix worker.
+
+import ./matrix
 import ./matrix_render
 
 const
-  MatrixGpuPkgConfigDeps = "egl glesv2 wayland-egl"
+  MatrixGpuPkgConfigDeps = "gbm egl glesv2"
   MatrixGpuPkgConfigCheck = gorgeEx("pkg-config --exists " & MatrixGpuPkgConfigDeps)
 
 when MatrixGpuPkgConfigCheck.exitCode != 0:
   {.
     error:
-      "missing system dependencies: install pkg-config plus development packages for egl, glesv2, and wayland-egl"
+      "missing system dependencies: install pkg-config plus development packages for gbm, egl and glesv2"
   .}
 
+when defined(kleisGpuSoftwareTest):
+  {.passC: "-DKLEIS_MATRIX_GPU_SOFTWARE_TEST".}
 {.passC: "-Isrc -Isrc/kleis " & gorge("pkg-config --cflags " & MatrixGpuPkgConfigDeps).}
 {.compile: "matrix_gpu_shim.c".}
 {.passL: gorge("pkg-config --libs " & MatrixGpuPkgConfigDeps).}
 
-type MatrixGpuRenderer* = ref object
-  handle: pointer
-  width*, height*: int
-  cellWidth*, cellHeight*: int
+type
+  MatrixGpu* = object
+    handle: pointer
 
-proc gpuCreate(
-  display, surface: pointer,
+  MatrixGpuTarget* = object
+    handle: pointer
+    width*, height*: int
+    cellSize*: int
+
+proc gpuOpen(
+  renderNode: cstring, major, minor: int64
+): pointer {.importc: "kleis_matrix_gpu_open", header: "kleis/matrix_gpu_shim.h".}
+
+when defined(kleisGpuSoftwareTest):
+  proc gpuOpenSoftwareTest(): pointer {.
+    importc: "kleis_matrix_gpu_open_software_test", header: "kleis/matrix_gpu_shim.h"
+  .}
+
+proc gpuIdentity(
+  handle: pointer
+): cstring {.importc: "kleis_matrix_gpu_identity", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuTargetCreate(
+  handle: pointer,
   width, height, cellWidth, cellHeight, glyphCount: int32,
   atlasPixels: ptr UncheckedArray[uint8],
   atlasWidth, atlasHeight: int32,
-): pointer {.importc: "kleis_matrix_gpu_create", header: "kleis/matrix_gpu_shim.h".}
+): pointer {.
+  importc: "kleis_matrix_gpu_target_create", header: "kleis/matrix_gpu_shim.h"
+.}
 
-proc gpuResize(
-  handle: pointer, width, height: int32
-): int32 {.importc: "kleis_matrix_gpu_resize", header: "kleis/matrix_gpu_shim.h".}
-
-proc gpuRender(
-  handle: pointer,
+proc gpuTargetRender(
+  handle, target: pointer,
   timeSeconds: cdouble,
   fallSpeed, cycleSpeed, raindropLength, brightnessDecay: cfloat,
-): int32 {.importc: "kleis_matrix_gpu_render", header: "kleis/matrix_gpu_shim.h".}
-
-proc gpuDestroy(
-  handle: pointer
-) {.importc: "kleis_matrix_gpu_destroy", header: "kleis/matrix_gpu_shim.h".}
-
-proc gpuShutdown() {.
-  importc: "kleis_matrix_gpu_shutdown", header: "kleis/matrix_gpu_shim.h"
+): int32 {.
+  importc: "kleis_matrix_gpu_target_render", header: "kleis/matrix_gpu_shim.h"
 .}
+
+proc gpuTargetClear(
+  handle, target: pointer, red, green, blue: cfloat
+): int32 {.importc: "kleis_matrix_gpu_target_clear", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuTargetRead(
+  handle, target: pointer, pixels: ptr UncheckedArray[uint32]
+): int32 {.importc: "kleis_matrix_gpu_target_read", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuTargetDestroy(
+  handle, target: pointer
+) {.importc: "kleis_matrix_gpu_target_destroy", header: "kleis/matrix_gpu_shim.h".}
+
+proc gpuClose(
+  handle: pointer
+) {.importc: "kleis_matrix_gpu_close", header: "kleis/matrix_gpu_shim.h".}
 
 proc gpuLastError(): cstring {.
   importc: "kleis_matrix_gpu_last_error", header: "kleis/matrix_gpu_shim.h"
@@ -51,62 +83,90 @@ proc gpuLastError(): cstring {.
 proc matrixGpuLastError*(): string =
   $gpuLastError()
 
-proc initMatrixGpuRenderer*(
-    display, surface: pointer, width, height: int, atlas: MatrixGlyphAtlas
-): MatrixGpuRenderer =
-  if atlas.pixels.len == 0 or atlas.width <= 0 or atlas.height <= 0 or
-      atlas.glyphCount <= 0:
-    return nil
-  let pixels = cast[ptr UncheckedArray[uint8]](unsafeAddr atlas.pixels[0])
-  let handle = gpuCreate(
-    display, surface, width.int32, height.int32, atlas.cellWidth.int32,
-    atlas.cellHeight.int32, atlas.glyphCount.int32, pixels, atlas.width.int32,
+proc isOpen*(gpu: MatrixGpu): bool =
+  not gpu.handle.isNil
+
+proc isNil*(target: MatrixGpuTarget): bool =
+  target.handle.isNil
+
+proc openMatrixGpu*(renderNode: string, major, minor: int64): MatrixGpu =
+  ## Exactly the granted node, or nothing: check isOpen, then the last error.
+  MatrixGpu(handle: gpuOpen(renderNode.cstring, major, minor))
+
+when defined(kleisGpuSoftwareTest):
+  proc openMatrixGpuSoftwareTest*(): MatrixGpu =
+    MatrixGpu(handle: gpuOpenSoftwareTest())
+
+proc identity*(gpu: MatrixGpu): string =
+  if gpu.isOpen:
+    $gpuIdentity(gpu.handle)
+  else:
+    ""
+
+proc createTarget*(
+    gpu: MatrixGpu, width, height: int, atlas: MatrixGlyphAtlas
+): MatrixGpuTarget =
+  ## One output at full size with the atlas's cell size.
+  if not gpu.isOpen or atlas.pixels.len == 0:
+    return
+  let handle = gpuTargetCreate(
+    gpu.handle,
+    width.int32,
+    height.int32,
+    atlas.cellWidth.int32,
+    atlas.cellHeight.int32,
+    atlas.glyphCount.int32,
+    cast[ptr UncheckedArray[uint8]](unsafeAddr atlas.pixels[0]),
+    atlas.width.int32,
     atlas.height.int32,
   )
-  if handle.isNil:
-    return nil
-  MatrixGpuRenderer(
-    handle: handle,
-    width: width,
-    height: height,
-    cellWidth: atlas.cellWidth,
-    cellHeight: atlas.cellHeight,
-  )
-
-proc isNil*(renderer: MatrixGpuRenderer): bool =
-  renderer == nil or renderer.handle.isNil
-
-proc resize*(renderer: MatrixGpuRenderer, width, height: int): bool =
-  if renderer.isNil:
-    return false
-  if renderer.width == width and renderer.height == height:
-    return true
-  if gpuResize(renderer.handle, width.int32, height.int32) == 0:
-    return false
-  renderer.width = width
-  renderer.height = height
-  true
+  if not handle.isNil:
+    result = MatrixGpuTarget(
+      handle: handle, width: width, height: height, cellSize: atlas.cellWidth
+    )
 
 proc render*(
-    renderer: MatrixGpuRenderer,
-    timeMs: int64,
-    fallSpeed, cycleSpeed, raindropLength, brightnessDecay: float,
+    gpu: MatrixGpu,
+    target: MatrixGpuTarget,
+    motion: MatrixMotion,
+    seconds, elapsedSeconds: float,
 ): bool =
-  if renderer.isNil:
-    return false
-  gpuRender(
-    renderer.handle,
-    cdouble(timeMs.float / 1000.0),
-    cfloat(fallSpeed),
-    cfloat(cycleSpeed),
-    cfloat(raindropLength),
-    cfloat(brightnessDecay),
+  ## Queues the frame at `seconds` and its readback. The shaders step glyph
+  ## age and brightness once per frame, so those two take the share of the
+  ## per-reference-frame rates that `elapsedSeconds` covers.
+  let frames = max(elapsedSeconds, 0.0) / MatrixReferenceFrameSeconds
+  gpuTargetRender(
+    gpu.handle,
+    target.handle,
+    cdouble(seconds),
+    cfloat(motion.fallSpeed),
+    cfloat(max(motion.cycleSpeed, 0.001) * frames),
+    cfloat(motion.raindropLength),
+    cfloat(decayBlend(motion.brightnessDecay, elapsedSeconds)),
   ) != 0
 
-proc close*(renderer: MatrixGpuRenderer) =
-  if not renderer.isNil:
-    gpuDestroy(renderer.handle)
-    renderer.handle = nil
+proc clear*(gpu: MatrixGpu, target: MatrixGpuTarget, color: uint32): bool =
+  ## Queues one opaque 0xRRGGBB colour and its readback.
+  gpuTargetClear(
+    gpu.handle,
+    target.handle,
+    cfloat(float((color shr 16) and 0xff) / 255.0),
+    cfloat(float((color shr 8) and 0xff) / 255.0),
+    cfloat(float(color and 0xff) / 255.0),
+  ) != 0
 
-proc shutdownMatrixGpu*() =
-  gpuShutdown()
+proc read*(
+    gpu: MatrixGpu, target: MatrixGpuTarget, pixels: ptr UncheckedArray[uint32]
+): bool =
+  ## Waits for the last queued frame and writes it as 0xAARRGGBB words.
+  gpuTargetRead(gpu.handle, target.handle, pixels) != 0
+
+proc destroy*(gpu: MatrixGpu, target: var MatrixGpuTarget) =
+  if not target.handle.isNil:
+    gpuTargetDestroy(gpu.handle, target.handle)
+    target.handle = nil
+
+proc close*(gpu: var MatrixGpu) =
+  if gpu.isOpen:
+    gpuClose(gpu.handle)
+    gpu.handle = nil

@@ -283,3 +283,66 @@ proc renderMatrix*(
 ) =
   let scale = if renderer.isNil: 1.0 else: renderer.scale
   renderMatrixScaled(rain, data, width, height, scale, KoineHighResFont)
+
+# Time-based rendering (see MatrixField). Each output has its own cell size:
+# automatic scaling gives MatrixTargetColumns columns on that output, and a
+# configured scale is a fixed cell (scale 2 is a 16-pixel cell).
+
+proc matrixCellScale*(configuredScale: float, outputWidth: int): float =
+  matrixEffectiveScale(configuredScale, outputWidth)
+
+proc matrixCellSize*(configuredScale: float, outputWidth: int): int =
+  scaledDimension(GlyphWidth, matrixCellScale(configuredScale, outputWidth))
+
+proc matrixFieldFor*(configuredScale: float, width, height: int): MatrixField =
+  let cell = matrixCellSize(configuredScale, width)
+  initMatrixField(max(width, 0) div cell, max(height, 0) div cell)
+
+proc channel(value: float): uint32 {.inline.} =
+  uint32(clamp(int(value * 255.0 + 0.5), 0, 255))
+
+proc renderMatrixField*(
+    field: MatrixField,
+    motion: MatrixMotion,
+    seconds: float,
+    atlas: MatrixGlyphAtlas,
+    data: ptr UncheckedArray[uint32],
+    width, height: int,
+) =
+  ## Draws `field` (already stepped to `seconds`) as opaque 0xAARRGGBB words,
+  ## with the GPU final pass's colours: a dim green trail and a pale head.
+  for i in 0 ..< width * height:
+    data[i] = 0xff000000'u32
+  let cellWidth = atlas.cellWidth
+  let cellHeight = atlas.cellHeight
+  if cellWidth <= 0 or cellHeight <= 0 or atlas.glyphCount <= 0:
+    return
+  for row in 0 ..< field.rows:
+    for col in 0 ..< field.cols:
+      let brightness = float(field.brightness[row * field.cols + col]) * 1.1 - 0.5
+      if brightness <= 0.0:
+        continue
+      let (red, green, blue) =
+        if rainCursor(motion, seconds, col, row, field.rows):
+          let level = max(brightness, 0.55)
+          (0.86 * level, level, 0.86 * level)
+        else:
+          (0.0, 0.82 * brightness, 0.04 * brightness)
+      let glyph = rainSymbol(motion, seconds, col, row, atlas.glyphCount)
+      let x0 = col * cellWidth
+      let y0 = row * cellHeight
+      for y in 0 ..< cellHeight:
+        let ty = y0 + y
+        if ty >= height:
+          break
+        for x in 0 ..< cellWidth:
+          let tx = x0 + x
+          if tx >= width:
+            break
+          let coverage = atlas.pixels[y * atlas.width + glyph * cellWidth + x]
+          if coverage <= 2'u8:
+            continue
+          let a = float(coverage) / 255.0
+          data[ty * width + tx] =
+            0xff000000'u32 or (channel(red * a) shl 16) or (channel(green * a) shl 8) or
+            channel(blue * a)
