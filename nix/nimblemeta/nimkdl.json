@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "metaData": {
+    "url": "https://github.com/greenm01/nimkdl",
+    "downloadMethod": "git",
+    "vcsRevision": "4755e537a848e5f91465ccb314013fc0a7ce7c2f",
+    "files": [
+      "/kdl/combinator.nim",
+      "/kdl/types.nim",
+      "/kdl.nim",
+      "/kdl/parser.nim",
+      "/kdl/format.nim",
+      "/kdl/query.nim",
+      "/kdl/internal_types.nim",
+      "/kdl/xik.nim",
+      "/nimkdl.nimble",
+      "/kdl/decoder.nim",
+      "/kdl/utils.nim",
+      "/kdl/encoder.nim",
+      "/kdl/new_error.nim",
+      "/kdl/nodes.nim",
+      "/kdl/prefs.nim",
+      "/kdl/jik.nim",
+      "/kdl/schema.nim"
+    ],
+    "binaries": [],
+    "specialVersions": [
+      "2.1.0"
+    ]
+  }
+}

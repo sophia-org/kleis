@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "metaData": {
+    "url": "https://github.com/nim-lang/bigints",
+    "downloadMethod": "git",
+    "vcsRevision": "d843ecfe1e2a62c3b0e29d211df09763da408cac",
+    "files": [
+      "/bigints.nim",
+      "/bigints/private/literals.nim",
+      "/bigints.nimble"
+    ],
+    "binaries": [],
+    "specialVersions": [
+      "1.0.0"
+    ]
+  }
+}

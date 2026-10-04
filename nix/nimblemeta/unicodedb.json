@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "metaData": {
+    "url": "https://github.com/nitely/nim-unicodedb",
+    "downloadMethod": "git",
+    "vcsRevision": "15c5e25e2a49a924bc97647481ff50125bba2c76",
+    "files": [
+      "/unicodedb/compositions.nim",
+      "/unicodedb/names_data.nim",
+      "/unicodedb.nim",
+      "/unicodedb/properties_data.nim",
+      "/unicodedb/casing.nim",
+      "/unicodedb/collation.nim",
+      "/unicodedb/blocks.nim",
+      "/unicodedb/collation_mk_data.nim",
+      "/unicodedb/properties.nim",
+      "/unicodedb/segmentation.nim",
+      "/unicodedb/names.nim",
+      "/unicodedb/decompositions_data.nim",
+      "/unicodedb/scripts.nim",
+      "/unicodedb/segmentation_data.nim",
+      "/unicodedb/compositions_data.nim",
+      "/unicodedb.nimble",
+      "/unicodedb/types.nim",
+      "/unicodedb/blocks_data.nim",
+      "/unicodedb/casing_data.nim",
+      "/unicodedb/types_data.nim",
+      "/unicodedb/widths_data.nim",
+      "/unicodedb/decompositions.nim",
+      "/unicodedb/widths.nim",
+      "/unicodedb/scripts_data.nim"
+    ],
+    "binaries": [],
+    "specialVersions": [
+      "0.13.0"
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+nim-deps schema=1 status=reviewed
+for product=kleis source_commit=342a4a50b6c43806f7f32c0b9e45c3e08c1ebac1 source_tree=37b04d4ff8205ebc4c307469563be75020238911 store=/home/niltempus/.nimble/pkgs2
+tool role=as path=/usr/bin/as resolved=/usr/bin/as version="GNU assembler (GNU Binutils) 2.44" sha256=0fbb9ec765c43b1c2f461eca66e1304c46d520de8339b0d289f8b905118972bf
+tool role=bwrap path=/usr/bin/bwrap resolved=/usr/bin/bwrap version="bubblewrap 0.13.0" sha256=a462f61dd0c692fdf55c4d910c5193931ca70c46502e3cd5068387879b9fe7a4
+tool role=cc1 path=/usr/lib64/gcc/x86_64-unknown-linux-gnu/14.2.1/cc1 resolved=/usr/lib/gcc/x86_64-unknown-linux-gnu/14.2/cc1 version="gcc -dumpfullversion 14.2.1 -dumpmachine x86_64-unknown-linux-gnu" sha256=339fdb7223f901fc916e1f7e4c7d2e5685dd5f51455b8ec628b33ce071794f20
+tool role=gcc path=/usr/bin/gcc resolved=/usr/bin/gcc version="gcc (GCC) 14.2.1 20250405" sha256=a1b98c96bed612a6e286a7907d0c320056dd71b22a042d45c22b8d431b8a2e20
+tool role=ld path=/usr/bin/ld resolved=/usr/bin/ld.bfd version="GNU ld (GNU Binutils) 2.44" sha256=21e731859732a8478b976be15a72a18763b67c75df00a5b404d18513cbf88b64
+tool role=nim path=/usr/bin/nim resolved=/usr/lib/nim/bin/nim version="Nim Compiler Version 2.2.12 [Linux: amd64]" sha256=48aee307ae591b7285802a6e28bfb1cb7965208f3fca6e7a6bfe26fcab37afbe
+tree role=nim-config path=/usr/lib/nim/config files=5 inventory_sha256=f17a11304ac3ed234b494a229ea94dd7635bc38375c23a4511725deb7225a895
+tree role=nim-lib path=/usr/lib/nim/lib files=335 inventory_sha256=9066cd081ee4b91263326b9b947648be665888781d1847f3d4a5aac8f99a4f2e
+hostpkg path=/usr/bin/as pkgver=binutils-2.44_2
+hostpkg path=/usr/bin/gcc pkgver=gcc-14.2.1+20250405_4
+hostpkg path=/usr/bin/ld.bfd pkgver=binutils-2.44_2
+hostpkg path=/usr/lib/gcc/x86_64-unknown-linux-gnu/14.2/cc1 pkgver=gcc-14.2.1+20250405_4
+hostpkg path=/usr/lib/libc.so pkgver=glibc-2.41_1
+hostpkg path=/usr/lib/libc.so.6 pkgver=glibc-2.41_1
+hostpkg path=/usr/lib/nim/bin/nim pkgver=nim-2.2.12_1
+hostpkg path=/usr/lib/nim/lib/system.nim pkgver=nim-2.2.12_1
+note text="host toolchain identity is recorded and re-checked; it is not a fully reproducible closure"
+package name=bigints version=1.0.0 dir=bigints-1.0.0-d7aee76dba84419721566fd5413a02cca231a806 checksum=d7aee76dba84419721566fd5413a02cca231a806 origin_url=https://github.com/nim-lang/bigints origin_vcs_revision=d843ecfe1e2a62c3b0e29d211df09763da408cac requires="nim >= 1.4.0" files=4 inventory_sha256=ae102fe925d4765ba1b556196a39e482c2eb4d37b2a95c5780e4fbcccdaf0335
+package name=graphemes version=0.12.0 dir=graphemes-0.12.0-5a12349aea7c9682c87a086989a8afe7c8ade36b checksum=5a12349aea7c9682c87a086989a8afe7c8ade36b origin_url=https://github.com/nitely/nim-graphemes origin_vcs_revision=cc868c314ced482ed88dca2b470aa019480ce4c9 requires="nim >= 1.0.0" files=4 inventory_sha256=b9d37bc9817d66cf46e428319bed4fbfb7357e2c8384085234da85eba30b228a
+package name=nimkdl version=2.1.0 dir=nimkdl-2.1.0-7d7e1e14205fb29c301af77414d2a617e6c755bb checksum=7d7e1e14205fb29c301af77414d2a617e6c755bb origin_url=https://github.com/greenm01/nimkdl origin_vcs_revision=4755e537a848e5f91465ccb314013fc0a7ce7c2f requires="nim >= 2.0.0, bigints, graphemes == 0.12.0, unicodedb == 0.13.0" files=18 inventory_sha256=51c78a9e55bedb72695edb6535e4217a3a77c1e60a56a1367ea76a317cdfef87
+package name=unicodedb version=0.13.0 dir=unicodedb-0.13.0-5c5fc0c8a83d270aca74fe41d33158e9042bb91a checksum=5c5fc0c8a83d270aca74fe41d33158e9042bb91a origin_url=https://github.com/nitely/nim-unicodedb origin_vcs_revision=15c5e25e2a49a924bc97647481ff50125bba2c76 requires="nim >= 1.0.0" files=25 inventory_sha256=df399b89c4c23e362f91946fd704889bd4689d91045a8918be76d1ce21970f29
+file package=bigints path=bigints.nim mode=0644 size=31520 sha256=2f1467dc43808ac424afc0288fe7d15ffbc295888f0ecffff2b85ba0ede32916
+file package=bigints path=bigints.nimble mode=0644 size=842 sha256=324058a0318a008042d21200165c927bf8846b34a7ebcfc4b5429ed5359872ba
+file package=bigints path=bigints/private/literals.nim mode=0644 size=526 sha256=e8673d5ad7f555d7e1af93725ee7727a65e80c2435386e1f80321255ddbe7a9a
+file package=bigints path=nimblemeta.json mode=0644 size=353 sha256=6704aa7357a93f7edecd6bc2aa19832f38ac46644ec09a70793ce928743b8e71
+file package=graphemes path=graphemes.nim mode=0644 size=12307 sha256=12f7f744122f09b41b4cd09a192f0fdb2eb9e622f4de2246b17c5b84771629cb
+file package=graphemes path=graphemes.nimble mode=0644 size=561 sha256=df5a9eca98a345d143a3e9d8af997cfce658dd760ee7bbfc4dda349493018c25
+file package=graphemes path=graphemes/grapheme_break.nim mode=0644 size=206056 sha256=d3afa171c11d938df16a975715b30607cadd7b81e047481db01a1fe83e4847a5
+file package=graphemes path=nimblemeta.json mode=0644 size=362 sha256=54680b730a0c5bc4b51c6a24f34b830e2ed5ab09955fed0a0c499c8c444bf4f7
+file package=nimkdl path=kdl.nim mode=0644 size=10458 sha256=e4c2b3c96b41c91d1b9d1c4966a0fd997134f746e37b98146ba0f6fc6315fe99
+file package=nimkdl path=kdl/combinator.nim mode=0644 size=9333 sha256=fcd02b8ed86b54e759834308908b28aae807be6eaa86c231460593d176ebd3fe
+file package=nimkdl path=kdl/decoder.nim mode=0644 size=22718 sha256=5984c7f8e49eddcc7f159e4961e3a0a7955681b1acef6fa337b56cd035b77bcb
+file package=nimkdl path=kdl/encoder.nim mode=0644 size=7929 sha256=91759defa3185eb1aace5baf959812537ef1f93189c3cd97a3754b58a0f2d325
+file package=nimkdl path=kdl/format.nim mode=0644 size=5032 sha256=865b85ea3694e3a3b14d39efee5758bddeec7f1d7e95294499f6d85740794eeb
+file package=nimkdl path=kdl/internal_types.nim mode=0644 size=4364 sha256=1f543c3d22b87196b4e069f1bf110db05f31a7318b4cde24e3d22a8e1762a903
+file package=nimkdl path=kdl/jik.nim mode=0644 size=5082 sha256=74f7b281e749913090122a2f5f6fa3356332720296c6e71b3a8787ba09e9641c
+file package=nimkdl path=kdl/new_error.nim mode=0644 size=4801 sha256=e403552d5720af03dfd99d77203431b6491d4e3759e383cfe2351e93bb99d874
+file package=nimkdl path=kdl/nodes.nim mode=0644 size=35665 sha256=45f7ec2af4e3fac66b2c3209e1968a27f61d07a723c12efd7cb3c6caf44dd607
+file package=nimkdl path=kdl/parser.nim mode=0644 size=55563 sha256=9bcfaf3b0852eee49668ba1ef716a20a29615d402c2b68ac30feab08ee400ed6
+file package=nimkdl path=kdl/prefs.nim mode=0644 size=4081 sha256=ef3d87d3de3c1334614ef69e243c20eb80d0bcf38aed1b1aa0c8127869971934
+file package=nimkdl path=kdl/query.nim mode=0644 size=710 sha256=df7ccb9dfc20f60f8cb1e6f235512a4fde9e249d65152a6a854737206333edef
+file package=nimkdl path=kdl/schema.nim mode=0644 size=4423 sha256=c8085582e8a7d657997ec1d3fe69cf574e86bee8b4451d7f1ebe06c5541040e1
+file package=nimkdl path=kdl/types.nim mode=0644 size=1742 sha256=eeb3f1e0593a819dfa0f869298f0e71069bf210082ac44ac7718b0338926d845
+file package=nimkdl path=kdl/utils.nim mode=0644 size=9648 sha256=630b500102f8f3afbf4426f4b50ce3a47a1d55a522289543d75c2577f2385c97
+file package=nimkdl path=kdl/xik.nim mode=0644 size=4245 sha256=2294580949d74c2a75b62b2c63de5febcb5c0f341d426da041d3515f990a150c
+file package=nimkdl path=nimblemeta.json mode=0644 size=689 sha256=90cfe4016fa71316c2c7ad4eefc6a33720abeae6341d927868c080c7bae64dcb
+file package=nimkdl path=nimkdl.nimble mode=0644 size=1449 sha256=a6bead1cbb0f6b1bd559954a7e1b05aa2219cc040ca7e909a71c050f887c20b3
+file package=unicodedb path=nimblemeta.json mode=0644 size=1115 sha256=1708b15e513dd98703aa1e8ef1426af45390d82408adbb306bea1d0ff6d7b788
+file package=unicodedb path=unicodedb.nim mode=0644 size=791 sha256=15081ed5bb2469f812125575f4459ad86bb78c723c030c4a9b876b2fd72522c9
+file package=unicodedb path=unicodedb.nimble mode=0644 size=1384 sha256=0faaf90311a6731ce2cb787fd7a86432cde7d52386008bafdd6647ed915c6249
+file package=unicodedb path=unicodedb/blocks.nim mode=0644 size=1166 sha256=b7469fc36cd27d95aecc07603114acca40a3bde6412c989796b76f1f8da82acf
+file package=unicodedb path=unicodedb/blocks_data.nim mode=0644 size=14135 sha256=928051302250a7569e6654286f05629019f18669758f790097e4f1af9795d770
+file package=unicodedb path=unicodedb/casing.nim mode=0644 size=1873 sha256=c6b71689ed55333c375250861c9ca7203f9944f360b3670665ceabd70d3aa8a2
+file package=unicodedb path=unicodedb/casing_data.nim mode=0644 size=230965 sha256=a1761af70f24cf0a40f1bf0a0d3d1c13c4b62c1ae2f8ab50c08ec75318c3a6b6
+file package=unicodedb path=unicodedb/collation.nim mode=0644 size=7842 sha256=a9d8a97f4d2f06a47131cfcc6fd6e153bc11b381b3b7c2d99f911d3bc730888b
+file package=unicodedb path=unicodedb/collation_mk_data.nim mode=0644 size=1555768 sha256=f2903cf04f42000c8d492ef67aa791e13128ebc0d7f9a97bae4b4415b21ce756
+file package=unicodedb path=unicodedb/compositions.nim mode=0644 size=1863 sha256=821ce5e0aa298ed22bea3261fcc410930a0806b227790b51813d4e0a200f576d
+file package=unicodedb path=unicodedb/compositions_data.nim mode=0644 size=32621 sha256=d128e5a9700cfdf3a513f5b4895c87e3c66043f86111abf76dbf12cebbd455ce
+file package=unicodedb path=unicodedb/decompositions.nim mode=0644 size=2149 sha256=76d399ee43ade1b32cbbfdbc6643f2cedd06ee563064bfd9e37f6bf49bc59389
+file package=unicodedb path=unicodedb/decompositions_data.nim mode=0644 size=177176 sha256=45b0243ce98b43499c87f7adba8753e1967f80bc10798fa2812e70fb91e1cd5b
+file package=unicodedb path=unicodedb/names.nim mode=0644 size=6415 sha256=8a9fdce56e9e3c9e3305723bb623cbb69a3a2c3bf596129bb5fda46da6f7a4fb
+file package=unicodedb path=unicodedb/names_data.nim mode=0644 size=2253605 sha256=00eb2864f862c6ab1a97f1745ae01d9a62509d0ee319f94d75ce898422db1d88
+file package=unicodedb path=unicodedb/properties.nim mode=0644 size=7136 sha256=a0f819dbc9808921be45936d54399516cab6f61192281cac042b85db67dd0d36
+file package=unicodedb path=unicodedb/properties_data.nim mode=0644 size=213417 sha256=b9c3652ad5edecf7b0afd37b379f9e602511c6585af2e6756428355255e6fe4c
+file package=unicodedb path=unicodedb/scripts.nim mode=0644 size=3047 sha256=eb1e69d486b93c6741de9acaa65011d0ea58aa9670800be32ddd59970c0da816
+file package=unicodedb path=unicodedb/scripts_data.nim mode=0644 size=175163 sha256=b2ffd874398d9bda7284828590a7af28e87caa9ee64ca058c98ca8aabcc6871a
+file package=unicodedb path=unicodedb/segmentation.nim mode=0644 size=796 sha256=22ab0796a72a340371aa24c0cc66e1aaa0019b21d7941883420ebfc3a66083cb
+file package=unicodedb path=unicodedb/segmentation_data.nim mode=0644 size=142285 sha256=de17643464f628dc1edc2f68326e53ec501e082a67f225380cf5a1131df23916
+file package=unicodedb path=unicodedb/types.nim mode=0644 size=2631 sha256=fb5e45cea30bbe28864ae365da1af92eaec270aaf44b6d14a91af34ac5054015
+file package=unicodedb path=unicodedb/types_data.nim mode=0644 size=176227 sha256=91b71a5735d60d59e0e8ca2089860e1760df01ad2b164b003e7935e6d812f457
+file package=unicodedb path=unicodedb/widths.nim mode=0644 size=854 sha256=0e03ca2ab7a1b4b61c153d9abe0105fb25639cda9e1d3cf70ce2326a4e32e17c
+file package=unicodedb path=unicodedb/widths_data.nim mode=0644 size=68253 sha256=73c8742ba6fa68b43a909716abfc3366f569506eae18e6c858d662677a0299d0

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "metaData": {
+    "url": "https://github.com/nitely/nim-graphemes",
+    "downloadMethod": "git",
+    "vcsRevision": "cc868c314ced482ed88dca2b470aa019480ce4c9",
+    "files": [
+      "/graphemes/grapheme_break.nim",
+      "/graphemes.nimble",
+      "/graphemes.nim"
+    ],
+    "binaries": [],
+    "specialVersions": [
+      "0.12.0"
+    ]
+  }
+}
