@@ -1,11 +1,11 @@
 # kleis on Sophia: native port plan
 
-Status: phases 1-4 done on branch `sophia-port` against a development pin of
-the C SDK lock client (`30cc519`, branch `t295-lock-files`); the pin moves to
-the released SDK before kleis ships. Depends on Sophia t294 (lock provider role and the
-`sophia-lock-files-v1` 9P contract, drafted on Sophia `lock/t034-next`) and t295
-(C desktop SDK lock client, `sophia_lock_client.h` on the SDK's
-`t295-lock-files` branch). Direction is set by Sophia ADR w0seozxx and plan
+Status: phases 1-4 done on branch `sophia-port`, pinned to the released C
+desktop SDK v0.8.0 (`b2a254dc`), whose lock provider client is experimental:
+the lock contract is still revision 1 (draft). Depends on Sophia t294 (lock
+provider role and the `sophia-lock-files-v1` 9P contract, merged in Sophia
+`61d545c90`) and t295 (C desktop SDK lock client, `sophia_lock_client.h`,
+released in SDK v0.8.0). Direction is set by Sophia ADR w0seozxx and plan
 8jcykhdc.
 
 Progress on `sophia-port`:

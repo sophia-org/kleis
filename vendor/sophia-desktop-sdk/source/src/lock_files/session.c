@@ -34,7 +34,7 @@ static int submitted(struct sophia_lc_client *c,
 /* Process events at the head in journal order. Negotiation and custody are
  * consumed here; an ObjectPublished holds the head until its object is read;
  * anything else is presented. Nothing behind a presented head is decoded. */
-int lc_parse(struct sophia_lc_client *c) {
+int sophia_lc_internal_parse(struct sophia_lc_client *c) {
   struct sophia_lf_record *r = &c->event;
   while (!c->event_ready && !c->object_stage && c->event_used >= 4) {
     size_t n = (size_t)lc_get(c->events, 4);
@@ -79,7 +79,7 @@ int lc_parse(struct sophia_lc_client *c) {
       c->object_stage = LC_OBJECT_WALK;
       break;
     case SOPHIA_LF_RESOURCE_STATUS:
-      lc_upload_status(c, &r->value.resource_status);
+      sophia_lc_internal_upload_status(c, &r->value.resource_status);
       break;
     case SOPHIA_LF_CHORD:
       if (r->value.chord.chord >= c->welcome.granted_chords)
@@ -111,7 +111,7 @@ int sophia_lc_event_consume(struct sophia_lc_client *c) {
     return SOPHIA_9P_ARGUMENT;
   c->event_ready = 0;
   drop_head(c);
-  if ((r = lc_parse(c)))
+  if ((r = sophia_lc_internal_parse(c)))
     c->terminal = r;
   return r;
 }
@@ -126,7 +126,7 @@ const struct sophia_lf_lock *sophia_lc_lock(const struct sophia_lc_client *c,
 
 /* The lock file always names the newest object; a later qid than the one
  * announced means a newer publication, announced later in the journal. */
-int lc_object_drive(struct sophia_lc_client *c) {
+int sophia_lc_internal_object_drive(struct sophia_lc_client *c) {
   const char *name = "lock";
   int r;
   if (!c->object_stage || c->object_op.active)
@@ -160,8 +160,8 @@ static int pinned(struct sophia_lc_client *c, uint64_t path) {
     c->object_probe = 2; /* superseded: release the fid unread */
   return 0;
 }
-int lc_object_reply(struct sophia_lc_client *c,
-                    const struct sophia_9p_reply *r) {
+int sophia_lc_internal_object_reply(struct sophia_lc_client *c,
+                                    const struct sophia_9p_reply *r) {
   struct sophia_lf_record object;
   size_t n;
   if (r->type == 7) {
@@ -220,7 +220,7 @@ int lc_object_reply(struct sophia_lc_client *c,
     else
       c->event_ready = 1;
     c->object_probe = 0;
-    return lc_parse(c);
+    return sophia_lc_internal_parse(c);
   default:
     return SOPHIA_9P_INVALID;
   }
@@ -250,7 +250,7 @@ int sophia_lc_upload_begin(struct sophia_lc_client *c,
   memset(&r, 0, sizeof(r));
   r.header.kind = SOPHIA_LF_RESOURCE_BEGIN;
   r.value.resource_begin = *v;
-  status = lc_queue(c, &r);
+  status = sophia_lc_internal_queue(c, &r);
   if (!status) {
     c->upload = *v;
     c->upload_stage = LC_UPLOAD_BEGUN;
@@ -261,7 +261,7 @@ int sophia_lc_upload_begin(struct sophia_lc_client *c,
   }
   return status;
 }
-int lc_upload_drive(struct sophia_lc_client *c) {
+int sophia_lc_internal_upload_drive(struct sophia_lc_client *c) {
   char slot[2];
   const char *names[2] = {"upload", slot};
   size_t n;
@@ -304,8 +304,8 @@ int lc_upload_drive(struct sophia_lc_client *c) {
 }
 /* A slot error ends this upload, never the connection: the slot binding is
  * the server's, and the resource's status says what happened. */
-int lc_upload_reply(struct sophia_lc_client *c,
-                    const struct sophia_9p_reply *r) {
+int sophia_lc_internal_upload_reply(struct sophia_lc_client *c,
+                                    const struct sophia_9p_reply *r) {
   if (r->type == 7) {
     c->remote_error = r->error;
     if (c->upload_stage == LC_UPLOAD_WALK || c->upload_stage == LC_UPLOAD_CLUNK)
@@ -346,8 +346,8 @@ int lc_upload_reply(struct sophia_lc_client *c,
     return SOPHIA_9P_INVALID;
   }
 }
-void lc_upload_status(struct sophia_lc_client *c,
-                      const struct sophia_lf_resource_status *v) {
+void sophia_lc_internal_upload_status(
+    struct sophia_lc_client *c, const struct sophia_lf_resource_status *v) {
   if (!c->upload_stage || v->resource.id != c->upload.resource.id ||
       v->resource.generation != c->upload.resource.generation)
     return;
@@ -357,8 +357,10 @@ void lc_upload_status(struct sophia_lc_client *c,
   else if (v->status != SOPHIA_LF_ADMITTED)
     c->upload_closing = 1;
 }
-void lc_upload_refused(struct sophia_lc_client *c, uint16_t kind) {
-  if ((kind == SOPHIA_LF_RESOURCE_BEGIN && c->upload_stage == LC_UPLOAD_BEGUN) ||
+void sophia_lc_internal_upload_refused(struct sophia_lc_client *c,
+                                       uint16_t kind) {
+  if ((kind == SOPHIA_LF_RESOURCE_BEGIN &&
+       c->upload_stage == LC_UPLOAD_BEGUN) ||
       ((kind == SOPHIA_LF_RESOURCE_END || kind == SOPHIA_LF_RESOURCE_CANCEL) &&
        c->upload_stage == LC_UPLOAD_ENDING))
     c->upload_closing = 1;
@@ -398,7 +400,7 @@ static int upload_step(struct sophia_lc_client *c, uint16_t kind) {
   r.value.resource_step.resource = c->upload.resource;
   if (kind == SOPHIA_LF_RESOURCE_END)
     r.value.resource_step.total_bytes = c->upload_offset;
-  status = lc_queue(c, &r);
+  status = sophia_lc_internal_queue(c, &r);
   if (!status)
     c->upload_stage = LC_UPLOAD_ENDING;
   return status;

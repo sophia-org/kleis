@@ -155,7 +155,7 @@ static int boot_reply(struct sophia_lc_client *c,
     memset(&negotiate, 0, sizeof(negotiate));
     negotiate.header.kind = SOPHIA_LF_NEGOTIATE;
     negotiate.value.negotiate = c->offer;
-    return lc_queue(c, &negotiate);
+    return sophia_lc_internal_queue(c, &negotiate);
   }
   return 0;
 }
@@ -225,7 +225,7 @@ static int submit_reply(struct sophia_lc_client *c,
       c->submit_sent = 0;
       c->submit_error = r->error ? r->error : UINT32_MAX;
       c->submit_stage = LC_TX_CLUNK;
-      lc_upload_refused(c, (uint16_t)lc_get(c->tx + 6, 2));
+      sophia_lc_internal_upload_refused(c, (uint16_t)lc_get(c->tx + 6, 2));
       return 0;
     }
   }
@@ -291,9 +291,9 @@ static int drive(struct sophia_lc_client *c) {
   if (r || c->bootstrap < LC_BOOTED)
     return r;
   if ((r = events_drive(c)) || (r = ack_drive(c)) || (r = submit_drive(c)) ||
-      (r = lc_object_drive(c)))
+      (r = sophia_lc_internal_object_drive(c)))
     return r;
-  return lc_upload_drive(c);
+  return sophia_lc_internal_upload_drive(c);
 }
 static int receive(struct sophia_lc_client *c, const struct sophia_9p_reply *r) {
   if (lc_same(&c->boot_op, r->handle)) {
@@ -315,7 +315,7 @@ static int receive(struct sophia_lc_client *c, const struct sophia_9p_reply *r) 
     memcpy(c->events + c->event_used, r->data, r->count);
     c->event_used += r->count;
     c->event_offset += r->count;
-    return lc_parse(c);
+    return sophia_lc_internal_parse(c);
   }
   if (lc_same(&c->ack_op, r->handle)) {
     c->ack_op.active = 0;
@@ -328,11 +328,11 @@ static int receive(struct sophia_lc_client *c, const struct sophia_9p_reply *r) 
   }
   if (lc_same(&c->object_op, r->handle)) {
     c->object_op.active = 0;
-    return lc_object_reply(c, r);
+    return sophia_lc_internal_object_reply(c, r);
   }
   if (lc_same(&c->upload_op, r->handle)) {
     c->upload_op.active = 0;
-    return lc_upload_reply(c, r);
+    return sophia_lc_internal_upload_reply(c, r);
   }
   return SOPHIA_9P_INVALID;
 }
@@ -359,7 +359,8 @@ int sophia_lc_service(struct sophia_lc_client *c, size_t budget) {
   return r;
 }
 
-int lc_queue(struct sophia_lc_client *c, const struct sophia_lf_record *value) {
+int sophia_lc_internal_queue(struct sophia_lc_client *c,
+                             const struct sophia_lf_record *value) {
   struct sophia_lf_record r;
   size_t n;
   if (c->submit_stage)
@@ -391,7 +392,7 @@ int sophia_lc_submit(struct sophia_lc_client *c,
     return c->terminal;
   if (!sophia_lc_ready(c))
     return SOPHIA_9P_BUSY;
-  return lc_queue(c, r);
+  return sophia_lc_internal_queue(c, r);
 }
 int sophia_lc_submission(const struct sophia_lc_client *c, uint64_t *id,
                          enum sophia_lc_submission *stage, uint32_t *error) {

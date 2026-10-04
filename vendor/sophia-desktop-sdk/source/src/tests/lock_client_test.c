@@ -13,6 +13,18 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/* Consumer link control: an application may define these generic names. The
+ * library's internals must not export them, or this test would fail to link
+ * (multiple definition) or call one of them below and abort. */
+int lc_queue(void) { abort(); }
+int lc_parse(void) { abort(); }
+int lc_object_drive(void) { abort(); }
+int lc_object_reply(void) { abort(); }
+int lc_upload_drive(void) { abort(); }
+int lc_upload_reply(void) { abort(); }
+void lc_upload_status(void) { abort(); }
+void lc_upload_refused(void) { abort(); }
+
 #define EPOCH 7u
 enum {
   F_ROOT = 1,

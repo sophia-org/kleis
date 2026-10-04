@@ -78,13 +78,17 @@ static inline int lc_remote(struct sophia_lc_client *c, uint32_t error) {
     c->stale = 1;
   return SOPHIA_9P_INVALID;
 }
-int lc_queue(struct sophia_lc_client *, const struct sophia_lf_record *);
-int lc_parse(struct sophia_lc_client *);
-int lc_object_drive(struct sophia_lc_client *);
-int lc_object_reply(struct sophia_lc_client *, const struct sophia_9p_reply *);
-int lc_upload_drive(struct sophia_lc_client *);
-int lc_upload_reply(struct sophia_lc_client *, const struct sophia_9p_reply *);
-void lc_upload_status(struct sophia_lc_client *,
-                      const struct sophia_lf_resource_status *);
-void lc_upload_refused(struct sophia_lc_client *, uint16_t kind);
+int sophia_lc_internal_queue(struct sophia_lc_client *,
+                             const struct sophia_lf_record *);
+int sophia_lc_internal_parse(struct sophia_lc_client *);
+int sophia_lc_internal_object_drive(struct sophia_lc_client *);
+int sophia_lc_internal_object_reply(struct sophia_lc_client *,
+                                    const struct sophia_9p_reply *);
+int sophia_lc_internal_upload_drive(struct sophia_lc_client *);
+int sophia_lc_internal_upload_reply(struct sophia_lc_client *,
+                                    const struct sophia_9p_reply *);
+void sophia_lc_internal_upload_status(struct sophia_lc_client *,
+                                      const struct sophia_lf_resource_status *);
+void sophia_lc_internal_upload_refused(struct sophia_lc_client *,
+                                       uint16_t kind);
 #endif
