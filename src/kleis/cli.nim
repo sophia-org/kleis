@@ -1,7 +1,7 @@
 import std/[options, parseutils, strutils]
 
 const Version* = "0.1.0"
-const MatrixFrameMsDefault* = 40
+const MatrixFpsDefault* = 30
 const MatrixCellScaleAuto* = 0.0
 const MatrixCellScaleDefault* = MatrixCellScaleAuto
 const MatrixFallSpeedDefault* = 0.3
@@ -41,7 +41,7 @@ type
     blank*: bool
     noGpu*: bool
     idleTimeoutSecs*: int
-    matrixFrameMs*: int
+    matrixFps*: int
     matrixCellScale*: float
     matrixFallSpeed*: float
     matrixCycleSpeed*: float
@@ -80,7 +80,7 @@ proc defaultOptions*(): Options =
       # Father (Tyrian indigo/violet), Son (royal blue), Spirit (life green)
     failColor: 0x8B0000'u32, # deep crimson
     logLevel: llError,
-    matrixFrameMs: MatrixFrameMsDefault,
+    matrixFps: MatrixFpsDefault,
     matrixCellScale: MatrixCellScaleDefault,
     matrixFallSpeed: MatrixFallSpeedDefault,
     matrixCycleSpeed: MatrixCycleSpeedDefault,

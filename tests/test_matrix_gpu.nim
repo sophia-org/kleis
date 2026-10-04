@@ -104,7 +104,7 @@ suite "gpu worker resources":
       renderNode: "/software",
       deviceMajor: 0,
       deviceMinor: 0,
-      frameMs: 30,
+      frameNs: 30_000_000,
       motion: motion,
       softwareTest: true,
     )

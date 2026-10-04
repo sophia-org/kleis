@@ -1,4 +1,4 @@
-import std/[os, unittest]
+import std/[os, strutils, unittest]
 
 import kleis/[cli, config]
 
@@ -131,7 +131,7 @@ ignore-empty-password #false
       path,
       """
 blank #true
-matrix-frame-ms 220
+matrix-fps 45
 matrix-cell-scale 1.5
 matrix-fall-speed 0.4
 matrix-cycle-speed 0.05
@@ -144,7 +144,7 @@ matrix-brightness-decay 1.5
     var opts = defaultOptions()
     opts.applyConfigFile(path)
     check opts.blank == true
-    check opts.matrixFrameMs == 220
+    check opts.matrixFps == 45
     check opts.matrixCellScale == 1.5
     check opts.matrixFallSpeed == 0.4
     check opts.matrixCycleSpeed == 0.05
@@ -204,14 +204,26 @@ matrix-line-height 4
     expect ValueError:
       opts.applyConfigFile(path)
 
-  test "matrix-frame-ms range is validated":
-    let path = getTempDir() / "kleis_test_matrix_frame_bad.kdl"
-    writeFile(path, "matrix-frame-ms 10\n")
+  test "matrix-fps range is validated":
+    let path = getTempDir() / "kleis_test_matrix_fps_bad.kdl"
+    for bad in ["matrix-fps 0\n", "matrix-fps 121\n"]:
+      writeFile(path, bad)
+      var opts = defaultOptions()
+      expect ValueError:
+        opts.applyConfigFile(path)
+    removeFile(path)
+
+  test "matrix-frame-ms is refused with its replacement":
+    let path = getTempDir() / "kleis_test_matrix_frame_ms.kdl"
+    writeFile(path, "matrix-frame-ms 40\n")
     defer:
       removeFile(path)
     var opts = defaultOptions()
-    expect ValueError:
+    try:
       opts.applyConfigFile(path)
+      check false
+    except ValueError as error:
+      check "matrix-fps" in error.msg
 
   test "matrix-cell-scale range is validated":
     for value in ["-1", "0.5", "9", "\"manual\""]:

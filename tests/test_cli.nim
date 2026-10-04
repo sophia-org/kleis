@@ -74,7 +74,7 @@ suite "cli":
 
   test "matrix frame timing default":
     let opts = parseOptions(@[])
-    check opts.matrixFrameMs == MatrixFrameMsDefault
+    check opts.matrixFps == MatrixFpsDefault
     check opts.matrixCellScale == MatrixCellScaleDefault
     check opts.matrixFallSpeed == MatrixFallSpeedDefault
     check opts.matrixCycleSpeed == MatrixCycleSpeedDefault

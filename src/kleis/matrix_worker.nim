@@ -36,7 +36,7 @@ type
     noGpu*: bool
     renderNode*: string ## empty unless Sophia granted a render node
     deviceMajor*, deviceMinor*: int64 ## -1 when absent
-    frameMs*: int
+    frameNs*: int64 ## the Matrix frame interval, from matrix-fps
     cellScale*: float ## MatrixCellScaleAuto, or a fixed cell scale
     motion*: MatrixMotion
     when defined(kleisGpuSoftwareTest):
@@ -141,7 +141,7 @@ proc matrixWorkerConfig*(opts: Options): MatrixWorkerConfig =
     noGpu: opts.noGpu,
     deviceMajor: -1,
     deviceMinor: -1,
-    frameMs: max(opts.matrixFrameMs, 1),
+    frameNs: 1_000_000_000'i64 div int64(max(opts.matrixFps, 1)),
     cellScale: opts.matrixCellScale,
     motion: MatrixMotion(
       fallSpeed: opts.matrixFallSpeed,
@@ -375,7 +375,7 @@ proc renderAll(r: var Renderer, jobs: seq[Job], seconds: float) =
 
 proc collect(s: ptr Shared, now: int64): seq[Job] =
   ## Claims a free slot of every output that owes a frame.
-  let frameNs = int64(s.config.frameMs) * 1_000_000
+  let frameNs = s.config.frameNs
   for output in s.outputs.mitems:
     let animated = s.view.kind == vkMatrix
     if not (output.due or (animated and now >= output.nextAt)):

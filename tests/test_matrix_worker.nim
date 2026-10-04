@@ -15,7 +15,7 @@ proc config(frameMs = 40): MatrixWorkerConfig =
     noGpu: true,
     deviceMajor: -1,
     deviceMinor: -1,
-    frameMs: frameMs,
+    frameNs: int64(frameMs) * 1_000_000,
     cellScale: 0.0,
     motion: MatrixMotion(
       fallSpeed: 0.3, cycleSpeed: 0.03, raindropLength: 0.75, brightnessDecay: 1.0
@@ -244,7 +244,7 @@ suite "gpu grant":
     let granted = matrixWorkerConfig(opts)
     check granted.renderNode == "/dev/dri/renderD128"
     check (granted.deviceMajor, granted.deviceMinor) == (226'i64, 128'i64)
-    check granted.frameMs == opts.matrixFrameMs
+    check granted.frameNs == 1_000_000_000'i64 div int64(opts.matrixFps)
     putEnv("SOPHIA_SHELL_GPU_MODE", "denied")
     check matrixWorkerConfig(opts).renderNode == ""
     delEnv("SOPHIA_SHELL_GPU_MODE")
