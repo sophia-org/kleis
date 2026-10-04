@@ -1,389 +1,117 @@
 # kleis
 
-A hardened, minimalist screen locker for Wayland compositors that
-implement `ext-session-lock-v1`.
+A Matrix rain lock provider for Sophia. Session starts kleis in its lock
+provider sandbox and owns authentication, keyboard input and the opaque cover.
+kleis receives character-free UI events and per-output pixel allocations. It
+never receives a password and cannot unlock the session. If it stops or fails,
+Sophia keeps the cover and authentication available.
 
-kleis began as `lockme`, a Wayland locker; it is the same code under a new name.
+kleis began as the Wayland locker `lockme`. This tree now uses Sophia's C
+desktop SDK and lock file contract; the old Wayland and PAM commands do not
+apply. The lock contract and SDK API are experimental.
 
-**Status (branch `sophia-port`):** kleis is becoming a native Sophia lock
-provider. On Sophia it only renders: Session owns the lock and the password,
-and kleis never sees a character. The Wayland, PAM and password code is gone
-from this branch, which connects to Sophia's lock files through the vendored
-C desktop SDK. It ships once that SDK's lock client is released, and the
-Wayland instructions below describe `lockme`, not this branch. See
-[docs/sophia-port-plan.md](docs/sophia-port-plan.md).
+## Build and checks
 
-![Matrix rain lock screen](matrix_rain.png?v=20260511)
-
-`kleis` aims at one thing: keep a typed password out of every place
-the kernel and userspace would otherwise let it leak.
-
-The password buffer is page-aligned, `mlock`'d, marked
-`MADV_DONTDUMP`, and wiped with `explicit_bzero` on every clear. The
-locker process drops dumpability, denies new privileges, and
-suppresses core dumps. PAM runs in a forked child that talks back
-over a length-prefixed pipe, so a misbehaving auth module never
-shares an address space with your secret.
-
-The UI defaults to GPU-rendered Matrix rain while idle. Typing switches to a
-solid configurable palette, failed auth shows a solid failure color, and `Alt-B`
-toggles between Matrix and a blank screen. Colors and the rest of the runtime
-knobs live in a small KDL 2.0 config file (see [Configuration](#configuration)).
-
-It is small on disk too: a stripped release binary is **558 KiB**,
-well under the size of `hyprlock` and several times smaller than
-`waylock` while shipping more hardening than either. See
-[compare.md](compare.md) for the full security and size comparison
-against `swaylock`, `waylock`, and `hyprlock`.
-
-Press Alt-B to toggle between a blank screen and the matrix rainfall.
-
-## Why
-
-I was missing waylock on the Niri window manager and decided to write a
-new one from scratch &mdash; and because I dig Nim.
-
-## Install build dependencies
-
-`kleis` needs Nim/Nimble, a C toolchain, `pkg-config`, the Nimble package
-`nimkdl >= 2.1.0`, and development headers for Wayland, Wayland EGL, EGL,
-OpenGL ES 3, xkbcommon, and PAM. The OpenGL ES link dependency is discovered
-through the standard `glesv2` pkg-config module, even though the renderer
-includes GLES3 headers.
-
-Void Linux:
+Requires Linux, Nim 2.2 or newer, Nimble, a C compiler, pkg-config, nimkdl 2.1
+or newer, and GBM, EGL and GLES3 development headers. The pkg-config modules
+are `gbm`, `egl` and `glesv2`. Dependencies must be available locally for the
+offline commands.
 
 ```sh
-sudo xbps-install -Sy nim base-devel pkg-config wayland-devel libglvnd-devel libxkbcommon-devel pam-devel
-nimble install -y nimkdl
-```
-
-Void, Arch Linux, Debian, and Ubuntu package `nimble` with `nim`.
-
-Arch Linux:
-
-```sh
-sudo pacman -S --needed nim base-devel wayland libglvnd libxkbcommon pam pkgconf
-nimble install -y nimkdl
-```
-
-Debian/Ubuntu:
-
-```sh
-sudo apt update
-sudo apt install nim build-essential libwayland-dev libegl-dev libgles-dev libxkbcommon-dev libpam0g-dev pkg-config
-nimble install -y nimkdl
-```
-
-## Build
-
-Build dependencies:
-
-- Nim `2.2.0` or newer
-- Nimble package `nimkdl >= 2.1.0`
-- a C compiler
-- `pkg-config`
-- development packages for `wayland-client`, `xkbcommon`, `pam`, `egl`,
-  `glesv2`, and `wayland-egl`
-- OpenGL ES 3 headers, normally provided by the same development package
-  that provides `glesv2`
-
-Protocol refresh dependency:
-
-- `wayland-scanner`
-
-```sh
-nimble build
-```
-
-Release builds use checked-in Wayland protocol stubs, so `wayland-scanner`
-and `wayland-protocols` are not required unless you are refreshing those
-generated files.
-
-## Format
-
-Formatting uses `nph`:
-
-```sh
-nimble setupTools
-nimble fmt
+nimble --offline build
+nimble --offline test
 nimble fmtCheck
 ```
 
-`nimble setupTools` installs the pinned formatter as a user-level Nimble tool.
-`nimble fmt` formats maintained Nim sources. `nimble fmtCheck` is the
-non-mutating check form for review or CI. The generated Matrix font source is
-left to `nimble regenFont`.
+`nimble installBin` installs the binary and creates the example configuration
+only if none exists. It does not install a PAM stack or activate a lock.
+Sophia's profile selects the executable, configuration and GPU policy. Use
+Sophia's `session:lock` action to lock. The selected provider is supervised by
+Session; running kleis alone without its endpoint is an error.
 
-## Deploy
+## Rendering
 
-```sh
-nimble deploy
-```
+With an explicit direct GPU grant, kleis opens exactly the granted render
+node, checks its device identity and creates an offscreen GBM/EGL GLES3
+context. The Matrix shaders render at each allocation's full pixel size.
+A fenced PBO readback produces top-first, opaque BGRA pixels for the existing
+lock upload contract. A software Mesa renderer is not accepted as GPU
+acceleration. There is no alternate device search.
 
-This builds an optimized release, installs `kleis` to `~/.local/bin/kleis`,
-and installs the PAM service file to `/etc/pam.d/kleis`. The binary install
-runs as your user; the PAM install uses `sudo` because `/etc/pam.d` is
-root-owned.
+Without a grant, with `no-gpu #true`, or after a GPU failure, rendering uses
+the CPU. The renderer choice or fallback reason is reported once. `--no-gpu`
+prevents EGL initialization; it does not remove linked libraries.
 
-## Check compositor compatibility
+One worker owns rendering and readback. The provider thread handles the
+socket and UI events independently. Each output has two bounded pixel slots;
+a borrowed upload remains immutable until the SDK releases it. The GPU also
+holds a native-size renderbuffer, a PBO and grid textures per output. Removed
+or resized outputs release their resources once outstanding leases finish.
 
-```sh
-kleis --check-protocols
-```
-
-At runtime, the compositor must advertise:
-
-- `ext_session_lock_manager_v1`
-- `wp_viewporter`
-- either `wl_shm` or `wp_single_pixel_buffer_manager_v1`
-
-`wl_shm` is used for the default color surfaces when available.
-`wp_single_pixel_buffer_manager_v1` is optional and is used for solid-color
-buffers when available.
-
-## Wayland protocol sources
-
-`kleis` uses `libwayland-client` directly through a small C shim and
-generated protocol stubs. It does not depend on a third-party Wayland wrapper
-library; this keeps the C/Nim boundary explicit and leaves protocol handling
-on the standard Wayland C stack.
-
-The generated protocol files are checked in under `src/kleis/protocols`.
-Their XML sources are vendored in `src/kleis/protocols/xml`:
-
-- `ext-session-lock-v1` from `wayland-protocols/staging`
-- `single-pixel-buffer-v1` from `wayland-protocols/staging`
-- `viewporter` from `wayland-protocols/stable`
-- `xdg-shell` from `wayland-protocols/stable`
-
-To refresh the generated C/header files after updating the XML:
-
-```sh
-nimble regenProtocols
-```
-
-Refreshing protocols requires `wayland-scanner`. The task regenerates C/H
-from the vendored XML only; update the XML from `wayland-protocols` first
-when intentionally moving to a newer protocol revision. Commit the XML and
-generated C/H changes together. Set `WAYLAND_SCANNER=/path/to/wayland-scanner` to use a non-default scanner.
-
-## Run
-
-```sh
-kleis
-```
-
-Plain `kleis` shows Matrix rain while idle and ignores the Enter key on an
-empty password buffer.
-
-### Battery / power
-
-**If you use a laptop, set `--idle-timeout`.** A continuously rendering GPU
-screensaver prevents deep sleep and drains the battery noticeably on an
-unattended locked machine. Setting an idle timeout blanks the screen after the
-specified number of seconds, letting the system reach low-power states:
-
-```sh
-kleis --idle-timeout 60   # blank after 60 s of inactivity
-```
-
-The next keypress wakes the screen back to matrix. You can also set this in
-`~/.config/kleis/config.kdl` so you never forget it:
-
-```kdl
-idle-timeout 60
-```
-
-### Other common flags
-
-`--blank` starts on a blank screen instead of matrix rain.
-`--allow-empty-password` allows an empty Enter press to reach PAM.
-`--no-gpu` forces the CPU renderer and removes EGL from the process (also
-useful on systems with unreliable GPU drivers).
-
-For development only, `kleis --dev-mode` makes `Esc` unlock and exit cleanly
-without talking to PAM. This is intentionally insecure and should not be used
-for a real screen lock, but it provides a compositor-safe escape hatch while
-testing kleis itself.
-
-For screenshots while developing the Matrix renderer, use:
-
-```sh
-kleis --dev-mode --dev-window
-```
-
-This opens the Matrix rain in a normal Wayland window and does not lock the
-session or start PAM.
-
-Matrix rain is rendered through a Sokol/EGL/GLES path when available. The glyph
-atlas is generated from kleis's built-in high-resolution alpha glyph source,
-which is rasterized from the CNTR Koine Greek TrueType font; if GPU setup fails,
-kleis warns and falls back to the existing software renderer. The GPU rain
-pipeline adapts MIT-licensed shader logic from Rezmason's Matrix rain renderer.
-While locked, `Alt-B` toggles between Matrix rain and a blank screen.
-
-Typing rotates the surface through a configurable input palette, and failed
-authentication shows a solid failure color. The `--init-color`, `--input-color`
-(repeatable), and `--fail-color` flags override the defaults.
-
-### Default palette
-
-| State            | Color       | RGB        |
-| ---------------- | ----------- | ---------- |
-| At rest (`init`) | Black       | `0x000000` |
-| Typing (Father)  | Indigo      | `0x4B0082` |
-| Typing (Son)     | Royal Blue  | `0x003366` |
-| Typing (Spirit)  | Life Green  | `0x006400` |
-| Auth failure     | Crimson     | `0x8B0000` |
-
-Repeating `--input-color` defines a custom palette. The first occurrence
-replaces the built-in palette; later occurrences append:
-
-```sh
-kleis --input-color 0x111111 --input-color 0x222222 --input-color 0x333333
-```
+Uploads use up to eight ordered writes with control capacity reserved.
+Outputs take turns. Obsolete rain can be cancelled, while a started feedback
+color finishes and further edits coalesce. A busy admission retains its
+finished frame, and End/Cancel retries keep their own bounded deadline.
+Animation uses monotonic elapsed time without catch-up bursts.
 
 ## Configuration
 
-`kleis` reads an optional KDL 2.0 configuration file. The discovery order is:
+Sophia supplies the selected configuration as `SOPHIA_LOCK_CONFIG`; the
+sandbox has no HOME. CLI options override file values. See
+[examples/config.kdl](examples/config.kdl) and `kleis --help`.
 
-1. `--config <path>` (must exist if specified),
-2. `$XDG_CONFIG_HOME/kleis/config.kdl` (default `~/.config/kleis/config.kdl`),
-3. each `$XDG_CONFIG_DIRS/kleis/config.kdl` in order (default `/etc/xdg`).
+Matrix rain is the default. Typing cycles the input palette; failed
+authentication shows the failure color. Alt-B toggles Matrix and blank.
+`blank #true` starts blank. `idle-timeout 60` blanks after 60 seconds without
+UI activity, avoiding continuous animation while unattended.
 
-`--no-config` disables the search entirely. CLI flags always win over values
-set in the config file. Parse and validation errors abort startup with a
-diagnostic on stderr.
-
-A documented template lives at `examples/config.kdl` and is dropped into
-`~/.config/kleis/config.kdl` by `nimble installBin`/`nimble deploy` only if
-that file does not already exist. Keys absent from the config always take the
-built-in default, so an existing config never breaks when new options are
-added; diff your file against `examples/config.kdl` after pulling updates to
-see what is new. Both `0xRRGGBB` and `#RRGGBB` color forms
-are accepted in the config file (the CLI requires the `0x` form).
-Legacy Matrix font keys from older templates are accepted as no-ops; Matrix
-glyphs now always come from the built-in Koine Greek glyph source.
-By default, Matrix glyph size follows the upstream Matrix renderer's 80-column
-grid. Set `matrix-cell-scale "auto"` in the config for responsive sizing, or
-set it to a number from 1.0 through 8.0 only if you want a fixed glyph scale.
-
-The built-in Matrix glyph alpha data is generated from the vendored CNTR
-`KoineGreek.ttf` font in `third_party/cntr-font`, copyright 2012-2023 Alan
-Bunning / Center for New Testament Restoration and distributed under CC BY-SA
-4.0. Run `nimble regenFont` after changing the vendored font or glyph list; the
-generator uses Python with Pillow and fontTools.
-
-## Build size
-
-The release build uses size-oriented flags (`--opt:size --mm:orc
--d:useMalloc -flto -Wl,--gc-sections -Wl,-s`) so that the KDL parser
-and its transitive dependencies (`bigints`, `unicodedb`) do not bloat
-the binary. The current stripped output is 558 KiB (570,808 bytes).
-Run `nimble sizecheck` to print the size of your build.
-
-## Platform requirements
-
-`kleis` is Linux-only. It relies on the following Linux-specific facilities
-to harden the password buffer and the auth child:
-
-- `mlock(2)` and `madvise(MADV_DONTDUMP)` on a page-aligned password buffer,
-  preventing it from being paged to swap or included in core dumps.
-- Best-effort `mlockall(2)` on the locker process and auth child to keep
-  transient password material on the stack and in libc/PAM internals out of
-  swap when `RLIMIT_MEMLOCK` permits it. Matrix mode and the auth child use
-  `MCL_CURRENT`; `--blank` uses `MCL_CURRENT | MCL_FUTURE` in the locker
-  process.
-- `explicit_bzero(3)` (glibc/musl) for password clearing that the compiler
-  is not permitted to elide.
-- `prctl(PR_SET_DUMPABLE, 0)` on both the parent and the auth child to
-  block ptrace and `/proc` snooping by other processes of the same UID.
-- `prctl(PR_SET_NO_NEW_PRIVS, 1)` on the parent after the PAM auth child is
-  forked, so future parent-side `execve` cannot gain privileges without
-  breaking PAM helpers such as `unix_chkpwd`.
-- `setrlimit(RLIMIT_CORE, 0)` to suppress core dumps for the locker.
-- `close_range(2)` (kernel 5.9+) in the auth child to drop inherited file
-  descriptors before invoking PAM; falls back to a manual loop on older
-  kernels.
-
-## Security
-
-`kleis` mirrors waylock's privilege-separation model: the parent process
-holds the Wayland connection and renders the lock surface, while a forked
-child performs PAM authentication over a length-prefixed pipe. The
-password buffer:
-
-- has a fixed `1024`-byte capacity rounded up to a page,
-- is allocated via `posix_memalign` and `mlock`'d for its lifetime,
-- is excluded from core dumps via `madvise(MADV_DONTDUMP)`,
-- is zeroed via `explicit_bzero` on every clear (including after each
-  failed authentication and after each `Backspace`),
-- has its protections re-applied after `--fork-on-lock`.
-
-The auth child also re-applies best-effort `mlockall(MCL_CURRENT)` before
-initializing PAM, because memory locks are not inherited across `fork(2)`.
-
-With `--fork-on-lock`, the background process additionally redirects
-`stdin`/`stdout`/`stderr` to `/dev/null` to avoid `SIGPIPE` if the parent
-shell is closed.
-
-`RLIMIT_MEMLOCK` must be at least the password buffer size (one page).
-Process-wide `mlockall` needs more headroom and can fail under normal
-desktop mappings or restrictive limits. That best-effort failure is reported
-only at `--log-level debug`; the locker continues with the password buffer's
-own mandatory `mlock` still active.
-
-See [audit.md](audit.md) for the running security and performance review log,
-including the recent PAM, Matrix renderer, signal handling, and SHM sizing
-checks.
-
-## PAM stack
-
-`kleis` performs authentication through PAM. The shipped default
-`pam.d/kleis` is a minimal, auditable, distribution-independent chain:
-
-```
-auth        optional      pam_faildelay.so delay=2000000
-auth        required      pam_unix.so     nullok
-account     required      pam_unix.so
+```kdl
+no-gpu #false
+matrix-frame-ms 40
+matrix-cell-scale 2.0
+matrix-fall-speed 0.3
+matrix-cycle-speed 0.03
+matrix-raindrop-length 0.75
+matrix-brightness-decay 1.0
 ```
 
-This verifies a plain Unix password and applies a two-second failure delay
-without recording faillock tallies or locking the user out after mistyped
-passwords. That avoids the bad screen-locker failure mode where three
-incorrect attempts can block a later correct password for several minutes.
-Most Linux users authenticate this way and gain nothing from a larger PAM
-stack on their screen locker, so this is the default.
+`matrix-cell-scale "auto"` fits about 80 columns independently on each output:
+2560 pixels gives 32-pixel cells; 1920 gives 24-pixel cells. A numeric scale
+sets cells in multiples of eight pixels, so 2.0 gives 16-pixel cells on both.
+This changes glyph size, not framebuffer resolution. Frame interval controls
+how often frames are requested; the transport and presentation cadence can
+limit delivery. The remaining four settings control motion, glyph changes,
+trail length and fading on both backends.
 
-The default does NOT enable `pam_systemd_home`, GNOME Keyring or
-KWallet auto-unlock, fingerprint readers, smartcards, or any other
-auxiliary auth method. If you need any of those, install the full PAM
-file instead:
+| UI state | Default color |
+| --- | --- |
+| Blank | Black `0x000000` |
+| First input | Indigo `0x4B0082` |
+| Second input | Royal blue `0x003366` |
+| Third input | Green `0x006400` |
+| Authentication failure | Crimson `0x8B0000` |
 
-```sh
-nimble installPamFull
-# or, without nimble:
-sudo install -m 0644 pam.d/kleis.full /etc/pam.d/kleis
-```
+Configuration is read at startup. Change the profile or configuration through
+Sophia's supported release/session flow, then start a new provider/session.
 
-The full file contains a single line, `auth include system-auth`, which
-delegates authentication to the distribution's `system-auth` chain.
-This is the same approach `waylock` and most other screen lockers ship
-with. The trade-off is that `kleis`'s effective auth surface becomes
-whatever `system-auth` says it is. To audit it, read
-`/etc/pam.d/system-auth`; edits there (for example a debugging
-`auth sufficient pam_permit.so` line, or a `pam_succeed_if` clause that
-bypasses checks for a group) silently affect `kleis` as well, and
-`kleis` cannot defend against this.
+## Development and evidence
 
-For PAM debugging, run `./kleis --log-level debug --blank --dev-mode` from
-a terminal. Debug logging records PAM status codes and messages only; it
-does not log password contents, password length, or prompts. In `--dev-mode`,
-`Esc` exits without asking PAM, which keeps manual auth tests recoverable.
+Unit tests cover UI state, output fairness, slot custody, topology changes,
+animation timing and fallback. Software EGL tests are compiled only with
+`kleisGpuSoftwareTest`; production never enables that path. An explicit
+`KLEIS_GPU_TEST_RENDER_NODE` opts the worker test into an offscreen real-device
+check. Sophia owns the real lock-service and end-to-end authentication tests.
+Headless renderer or service throughput does not prove physical lock cadence.
 
-To revert to the default minimal chain at any time:
+`nimble render` builds the legacy CPU preview utility `tools/kleis_render`.
+It can write a PPM without a session; its step-based animation is a visual aid,
+not a timing test of the worker. The native port history is in
+[docs/sophia-port-plan.md](docs/sophia-port-plan.md).
 
-```sh
-nimble installPam
-```
+## Attribution
+
+The glyph atlas uses CNTR's `KoineGreek.ttf`, copyright 2012–2023 Alan Bunning /
+Center for New Testament Restoration, distributed under CC BY-SA 4.0. The
+checked-in source is under `third_party/cntr-font`; `nimble regenFont` uses
+Python, Pillow and fontTools. The Matrix shaders adapt Rezmason's MIT-licensed
+Matrix rain renderer. Existing source and third-party notices are preserved.

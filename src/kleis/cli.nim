@@ -56,8 +56,7 @@ const Usage* = """usage: kleis [options]
   --log-level <level>              Set log level: error, warning, info, debug.
 
   --blank                          Start with a blank screen instead of Matrix.
-  --no-gpu                         Render on the CPU. The Sophia build renders
-                                   on the CPU only for now.
+  --no-gpu                         Render on the CPU without initializing EGL.
   --idle-timeout <seconds>         Blank the screen after this many seconds of
                                    inactivity. 0 disables (default: 0).
 

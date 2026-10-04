@@ -50,6 +50,43 @@ proc opaque(lease: FrameLease): bool =
   true
 
 suite "matrix worker":
+  test "busy admission preserves a one-shot solid without another wake":
+    let w = startMatrixWorker(config(), View(kind: vkSolid, color: 0x112233))
+    w.setTargets([MatrixTarget(allocation: 1, width: 32, height: 24)])
+    # Observe the initial signal before checking that retry emits none.
+    check w.waitReady()
+    var frame = w.acquire(1).get
+    w.clearReady()
+    let sequence = frame.sequence
+    let pixels = frame.pixels
+    w.release(frame, retry = true)
+    check frame.pixels.isNil
+    check not w.waitReady(20) # Admission progress, not readiness, drives retry.
+    var retried = w.acquire(1).get
+    check retried.sequence == sequence and retried.pixels == pixels
+    check retried.allPixels(0xff112233'u32)
+    w.release(retried)
+    w.stop()
+
+  test "busy admission cannot revive an old view or displace a newer frame":
+    let w = startMatrixWorker(config(frameMs = 10), matrixView)
+    w.setTargets([MatrixTarget(allocation: 1, width: 32, height: 24)])
+    var older = w.next(1).get
+    var newer = w.next(1).get
+    let sequence = newer.sequence
+    w.release(newer, retry = true)
+    w.release(older, retry = true)
+    var latest = w.acquire(1).get
+    check latest.sequence >= sequence
+    let generation = w.setView(View(kind: vkSolid, color: 0xaabbcc))
+    w.release(latest, retry = true)
+    var solid = w.next(1).get
+    check solid.viewGeneration == generation
+    check solid.allPixels(0xffaabbcc'u32)
+    w.release(solid)
+    w.setTargets([])
+    w.stop()
+
   test "every output gets full-size opaque frames of the current view":
     let w = startMatrixWorker(config(), matrixView)
     w.setTargets(

@@ -603,14 +603,24 @@ proc acquire*(w: MatrixWorker, allocation: uint64): Option[FrameLease] =
           )
         )
 
-proc release*(w: MatrixWorker, lease: var FrameLease) =
+proc release*(w: MatrixWorker, lease: var FrameLease, retry = false) =
   ## After the upload's custody, cancel or rejection. Releasing twice is
-  ## harmless.
+  ## harmless. If admission was busy before the SDK borrowed the pixels,
+  ## retry returns a current frame to Ready unless a newer one exists. The
+  ## caller already knows it is ready; ringing readyFd here would busy-spin
+  ## against the same blocked admission.
   if lease.slot.isNil:
     return
   withLock w.shared.lock:
     if lease.slot.attached:
-      lease.slot.state = ssFree
+      var keep = retry and lease.viewGeneration == w.shared.viewGeneration
+      if keep:
+        for output in w.shared.outputs:
+          if lease.slot in output.slots:
+            for other in output.slots:
+              if other.state == ssReady and other.sequence > lease.sequence:
+                keep = false
+      lease.slot.state = if keep: ssReady else: ssFree
     else:
       w.shared.freeSlot(lease.slot)
   lease.slot = nil

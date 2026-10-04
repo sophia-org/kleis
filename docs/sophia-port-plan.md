@@ -1,6 +1,6 @@
 # kleis on Sophia: native port plan
 
-Status: phases 1-4 done on branch `sophia-port`, pinned to the released C
+Historical port status: phases 1-4 completed on `sophia-port`, using C
 desktop SDK v0.8.0 (`b2a254dc`), whose lock provider client is experimental:
 the lock contract is still revision 1 (draft). Depends on Sophia t294 (lock
 provider role and the `sophia-lock-files-v1` 9P contract, merged in Sophia
@@ -40,6 +40,17 @@ Progress on `sophia-port`:
   binary against the production lock service presented Matrix frames, the
   typed colour, the Matrix again after Clear, and blank on Alt-B, and retired
   its images on unlock.
+
+## Rendering follow-up (t302)
+
+The performance candidate restores offscreen GPU rendering on the exact
+Session-granted node, with a CPU fallback and two worker slots per output.
+Native output dimensions and per-output glyph sizing are preserved. The
+provider uses the experimental C SDK 0.9.0 candidate's eight-write upload
+window, retains a frame across busy admission and retries End/Cancel EAGAIN.
+Input feedback coalesces separately from animation, and animation follows
+monotonic time. See README.md for current build and runtime instructions;
+the module map and phased plan below record the original port decisions.
 
 ## Role
 
