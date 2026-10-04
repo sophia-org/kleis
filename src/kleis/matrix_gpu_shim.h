@@ -24,6 +24,9 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open(
 struct kleis_matrix_gpu *kleis_matrix_gpu_open_software_test(void);
 #endif
 
+/* Whether a GL_RENDERER string names a software rasterizer. */
+int32_t kleis_matrix_gpu_is_software_renderer(const char *renderer);
+
 /* "vendor | renderer | version", valid until the device is closed. */
 const char *kleis_matrix_gpu_identity(struct kleis_matrix_gpu *gpu);
 

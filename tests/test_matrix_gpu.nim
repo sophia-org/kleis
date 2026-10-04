@@ -1,11 +1,13 @@
 ## Built with -d:kleisGpuSoftwareTest: Mesa's software rasterizer, no device.
 ## KLEIS_GPU_TEST_RENDER_NODE also runs one frame on that real render node.
 
-import std/[os, posix, strutils, unittest]
+import std/[options, os, posix, strutils, unittest]
 
 import ../src/kleis/matrix
 import ../src/kleis/matrix_gpu
 import ../src/kleis/matrix_render
+import ../src/kleis/matrix_worker
+import ../src/kleis/ui
 
 const motion = MatrixMotion(
   fallSpeed: 0.3, cycleSpeed: 0.03, raindropLength: 0.75, brightnessDecay: 1.0
@@ -96,6 +98,58 @@ suite "offscreen gpu matrix":
 
   gpu.close()
 
+suite "gpu worker resources":
+  test "allocation churn returns to the current targets' gpu targets":
+    var config = MatrixWorkerConfig(
+      renderNode: "/software",
+      deviceMajor: 0,
+      deviceMinor: 0,
+      frameMs: 30,
+      motion: motion,
+      softwareTest: true,
+    )
+    let w = startMatrixWorker(config, View(kind: vkMatrix))
+    proc next(allocation: uint64): FrameLease =
+      for _ in 0 ..< 300:
+        let lease = w.acquire(allocation)
+        if lease.isSome:
+          return lease.get
+        sleep(10)
+      doAssert false, "no frame"
+
+    for round in 1 .. 30:
+      w.setTargets(
+        [MatrixTarget(allocation: uint64(round), width: 64 + round * 8, height: 48)]
+      )
+      if round mod 5 == 0:
+        var lease = next(uint64(round))
+        w.release(lease)
+    check w.backend == mbGpu
+    w.setTargets([MatrixTarget(allocation: 99, width: 200, height: 100)])
+    var lease = next(99)
+    w.release(lease)
+    let expected =
+      LiveResources(slots: 2, gpuTargets: 1, cpuOutputs: 0, timings: 1, atlases: 1)
+    var live = w.liveResources
+    for _ in 0 ..< 300:
+      if live == expected:
+        break
+      sleep(10)
+      live = w.liveResources
+    check live == expected
+    w.stop()
+
+suite "software renderers":
+  test "renderer strings that name a software rasterizer are recognised":
+    check isSoftwareRenderer("llvmpipe (LLVM 22.1.8, 256 bits)")
+    check isSoftwareRenderer("softpipe")
+    check isSoftwareRenderer("Mesa X11 swrast")
+    check isSoftwareRenderer("Software Rasterizer")
+    check not isSoftwareRenderer(
+      "AMD Radeon RX 7900 GRE (radeonsi, navi31, ACO, DRM 3.64, 6.18.54_1)"
+    )
+    check not isSoftwareRenderer("Mesa Intel(R) Graphics (ADL GT2)")
+
 suite "granted render node":
   test "only the named node, with matching device numbers, opens":
     check not openMatrixGpu("dev/dri/renderD128", 226, 128).isOpen
@@ -122,3 +176,13 @@ suite "granted render node":
         for pixel in pixels:
           check (pixel shr 24) == 0xff
         gpu.close()
+      # Even with Mesa pushed to a software driver, the production open
+      # never yields a software renderer: it opens hardware or refuses.
+      putEnv("MESA_LOADER_DRIVER_OVERRIDE", "kms_swrast")
+      var forced = openMatrixGpu(node, major, minor)
+      echo "  forced software: ",
+        (if forced.isOpen: forced.identity else: matrixGpuLastError())
+      check not (forced.isOpen and isSoftwareRenderer(forced.identity))
+      if forced.isOpen:
+        forced.close()
+      delEnv("MESA_LOADER_DRIVER_OVERRIDE")

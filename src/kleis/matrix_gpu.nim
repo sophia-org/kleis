@@ -80,6 +80,16 @@ proc gpuLastError(): cstring {.
   importc: "kleis_matrix_gpu_last_error", header: "kleis/matrix_gpu_shim.h"
 .}
 
+proc gpuIsSoftwareRenderer(
+  renderer: cstring
+): int32 {.
+  importc: "kleis_matrix_gpu_is_software_renderer", header: "kleis/matrix_gpu_shim.h"
+.}
+
+proc isSoftwareRenderer*(renderer: string): bool =
+  ## The production open refuses these: a grant must give a hardware GPU.
+  gpuIsSoftwareRenderer(renderer.cstring) != 0
+
 proc matrixGpuLastError*(): string =
   $gpuLastError()
 

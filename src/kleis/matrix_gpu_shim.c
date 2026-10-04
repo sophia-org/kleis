@@ -626,8 +626,27 @@ static bool has_extension(const char *extensions, const char *name) {
 	return false;
 }
 
-/* A GLES 3.0 context made current with no surface, then sokol on it. */
-static bool start_context(struct kleis_matrix_gpu *gpu) {
+int32_t kleis_matrix_gpu_is_software_renderer(const char *renderer) {
+	static const char *const software[] = {
+		"llvmpipe", "softpipe", "swrast", "Software Rasterizer", "SwiftShader",
+	};
+	if (!renderer) {
+		return 1;
+	}
+	for (size_t i = 0; i < sizeof(software) / sizeof(software[0]); i++) {
+		if (strstr(renderer, software[i])) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/*
+ * A GLES 3.0 context made current with no surface, then sokol on it. A
+ * granted render node must give a hardware renderer: Mesa can fall back to
+ * a software one on a node whose driver it cannot load.
+ */
+static bool start_context(struct kleis_matrix_gpu *gpu, bool allow_software) {
 	if (!eglInitialize(gpu->display, NULL, NULL)) {
 		set_error("eglInitialize failed");
 		gpu->display = EGL_NO_DISPLAY;
@@ -668,11 +687,16 @@ static bool start_context(struct kleis_matrix_gpu *gpu) {
 		set_error("eglMakeCurrent failed");
 		return false;
 	}
+	const char *renderer = (const char *)glGetString(GL_RENDERER);
+	if (!allow_software && kleis_matrix_gpu_is_software_renderer(renderer)) {
+		set_error("the render node offers only a software renderer");
+		return false;
+	}
 	const char *gl_extensions = (const char *)glGetString(GL_EXTENSIONS);
 	gpu->bgra_readback = has_extension(gl_extensions, "GL_EXT_read_format_bgra");
 	snprintf(gpu->identity, sizeof(gpu->identity), "%s | %s | %s",
 		(const char *)glGetString(GL_VENDOR),
-		(const char *)glGetString(GL_RENDERER),
+		renderer,
 		(const char *)glGetString(GL_VERSION));
 	return init_sokol();
 }
@@ -731,7 +755,7 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open(
 		destroy_device(gpu);
 		return NULL;
 	}
-	if (!start_context(gpu)) {
+	if (!start_context(gpu, false)) {
 		destroy_device(gpu);
 		return NULL;
 	}
@@ -742,6 +766,7 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open(
 #ifdef KLEIS_MATRIX_GPU_SOFTWARE_TEST
 struct kleis_matrix_gpu *kleis_matrix_gpu_open_software_test(void) {
 	/* Software rendering only: a test must never reach a device. */
+	const char *previous = getenv("LIBGL_ALWAYS_SOFTWARE");
 	setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
 	struct kleis_matrix_gpu *gpu = new_device();
 	if (!gpu) {
@@ -753,7 +778,11 @@ struct kleis_matrix_gpu *kleis_matrix_gpu_open_software_test(void) {
 		destroy_device(gpu);
 		return NULL;
 	}
-	if (!start_context(gpu)) {
+	bool started = start_context(gpu, true);
+	if (!previous) {
+		unsetenv("LIBGL_ALWAYS_SOFTWARE");
+	}
+	if (!started) {
 		destroy_device(gpu);
 		return NULL;
 	}

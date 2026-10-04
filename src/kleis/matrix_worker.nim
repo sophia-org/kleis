@@ -14,6 +14,10 @@
 ## - on the CPU: one float per cell and one glyph atlas row per cell size.
 ## After a resize or removal, the old geometry's slots that are still leased
 ## or rendering stay allocated until released or finished: at most two more.
+## The worker drops every other per-output resource of a removed or resized
+## output on its own thread (GPU targets, CPU fields, timings and atlas sizes
+## no output uses), so churn returns to these bounds; liveResources counts
+## them.
 
 import std/[locks, monotimes, options, os, posix, strutils, tables]
 import ./cli
@@ -35,6 +39,16 @@ type
     frameMs*: int
     cellScale*: float ## MatrixCellScaleAuto, or a fixed cell scale
     motion*: MatrixMotion
+    when defined(kleisGpuSoftwareTest):
+      softwareTest*: bool ## tests only: Mesa's software rasterizer, no device
+
+  LiveResources* = object
+    ## What the worker holds now; it returns to the current targets' bounds.
+    slots*: int ## slot records, including detached ones not yet released
+    gpuTargets*: int
+    cpuOutputs*: int
+    timings*: int
+    atlases*: int
 
   MatrixTarget* = object
     allocation*: uint64
@@ -79,6 +93,9 @@ type
     sequence: uint64
     stopping: bool
     backend: MatrixBackend
+    targetsVersion: uint64 ## increases with every setTargets
+    slots: int ## live slot records
+    live: LiveResources ## the worker's own resources, as last reported
     wakeFd: cint ## provider to worker
     readyFd: cint ## worker to provider
 
@@ -97,12 +114,16 @@ const
 proc eventfd(initval: cuint, flags: cint): cint {.importc, header: "<sys/eventfd.h>".}
 
 proc signal(fd: cint) =
+  ## EAGAIN only means the counter is already non-zero: the wake stands.
   var one = 1'u64
-  discard posix.write(fd, addr one, 8)
+  while posix.write(fd, addr one, 8) < 0 and errno == EINTR:
+    discard
 
 proc drain(fd: cint) =
+  ## EAGAIN means there was nothing to clear.
   var count: uint64
-  discard posix.read(fd, addr count, 8)
+  while posix.read(fd, addr count, 8) < 0 and errno == EINTR:
+    discard
 
 proc nowNs(): int64 =
   getMonoTime().ticks
@@ -134,25 +155,29 @@ proc matrixWorkerConfig*(opts: Options): MatrixWorkerConfig =
     result.deviceMajor = parseDevice(getEnv(GpuDeviceMajorEnv))
     result.deviceMinor = parseDevice(getEnv(GpuDeviceMinorEnv))
 
-proc newSlot(): ptr Slot =
+# Slot records change only with the shared lock held.
+
+proc newSlot(s: ptr Shared): ptr Slot =
   result = createShared(Slot)
   result.attached = true
+  inc s.slots
 
-proc freeSlot(slot: ptr Slot) =
+proc freeSlot(s: ptr Shared, slot: ptr Slot) =
   if not slot.pixels.isNil:
     deallocShared(slot.pixels)
   freeShared(slot)
+  dec s.slots
 
-proc detach(slot: ptr Slot) =
+proc detach(s: ptr Shared, slot: ptr Slot) =
   ## The output no longer owns `slot`. A slot the worker is filling or the
   ## provider holds is freed by whichever finishes with it.
   if slot.state in {ssRendering, ssLeased}:
     slot.attached = false
   else:
-    freeSlot(slot)
+    s.freeSlot(slot)
 
-proc newOutput(target: MatrixTarget): OutputSlots =
-  OutputSlots(target: target, slots: [newSlot(), newSlot()], due: true)
+proc newOutput(s: ptr Shared, target: MatrixTarget): OutputSlots =
+  OutputSlots(target: target, slots: [s.newSlot(), s.newSlot()], due: true)
 
 # The worker thread.
 
@@ -202,6 +227,11 @@ proc startRenderer(config: MatrixWorkerConfig): Renderer =
   elif config.deviceMajor < 0 or config.deviceMinor < 0:
     log("cpu (incomplete gpu grant)")
   else:
+    when defined(kleisGpuSoftwareTest):
+      if config.softwareTest:
+        result.gpu = openMatrixGpuSoftwareTest()
+        result.backend = if result.gpu.isOpen: mbGpu else: mbCpu
+        return
     result.gpu =
       openMatrixGpu(config.renderNode, config.deviceMajor, config.deviceMinor)
     if result.gpu.isOpen:
@@ -221,6 +251,57 @@ proc fallBack(r: var Renderer) =
   log("gpu failed (" & matrixGpuLastError() & "); continuing on the cpu")
   r.stopGpu()
   r.backend = mbCpu
+
+proc reconcile(r: var Renderer, targets: seq[MatrixTarget]) =
+  ## Keeps per-output state only for the current targets at their current
+  ## sizes. On the worker thread with no lock held: it frees GL objects.
+  proc current(allocation: uint64, width, height: int): bool =
+    for target in targets:
+      if target.allocation == allocation:
+        return target.width == width and target.height == height
+    false
+
+  var gone: seq[uint64]
+  for allocation, output in r.gpuOutputs:
+    if output.target.isNil or
+        not current(allocation, output.target.width, output.target.height):
+      gone.add allocation
+  for allocation in gone:
+    var output = r.gpuOutputs[allocation]
+    r.gpu.destroy(output.target)
+    r.gpuOutputs.del allocation
+  gone.setLen(0)
+  for allocation, output in r.cpuOutputs:
+    if not current(allocation, output.width, output.height):
+      gone.add allocation
+  for allocation in gone:
+    r.cpuOutputs.del allocation
+  gone.setLen(0)
+  for allocation in r.lastSeconds.keys:
+    var present = false
+    for target in targets:
+      present = present or target.allocation == allocation
+    if not present:
+      gone.add allocation
+  for allocation in gone:
+    r.lastSeconds.del allocation
+  var unused: seq[int]
+  for cell in r.atlases.keys:
+    var used = false
+    for target in targets:
+      used = used or matrixCellSize(r.config.cellScale, target.width) == cell
+    if not used:
+      unused.add cell
+  for cell in unused:
+    r.atlases.del cell
+
+proc live(r: Renderer): LiveResources =
+  LiveResources(
+    gpuTargets: r.gpuOutputs.len,
+    cpuOutputs: r.cpuOutputs.len,
+    timings: r.lastSeconds.len,
+    atlases: r.atlases.len,
+  )
 
 proc fill(job: Job) =
   let pixel = 0xff000000'u32 or (job.view.color and 0x00ffffff'u32)
@@ -345,7 +426,7 @@ proc publish(s: ptr Shared, jobs: seq[Job]): bool =
   for job in jobs:
     let slot = job.slot
     if not slot.attached:
-      freeSlot(slot)
+      s.freeSlot(slot)
       continue
     var output: ptr OutputSlots = nil
     for candidate in s.outputs.mitems:
@@ -371,14 +452,26 @@ proc workerMain(s: ptr Shared) {.thread.} =
     withLock s.lock:
       s.backend = renderer.backend
     let origin = nowNs()
+    var seenTargets = 0'u64
     while true:
       var jobs: seq[Job]
       var timeout: cint
+      var targets: Option[seq[MatrixTarget]]
       withLock s.lock:
         if s.stopping:
           break
         jobs = collect(s, nowNs())
         timeout = waitMs(s, nowNs())
+        if s.targetsVersion != seenTargets:
+          seenTargets = s.targetsVersion
+          var current: seq[MatrixTarget]
+          for output in s.outputs:
+            current.add output.target
+          targets = some(current)
+      if targets.isSome:
+        renderer.reconcile(targets.get)
+        withLock s.lock:
+          s.live = renderer.live
       if jobs.len == 0:
         var wake = TPollfd(fd: s.wakeFd, events: POLLIN)
         if poll(addr wake, 1, timeout) > 0:
@@ -389,6 +482,7 @@ proc workerMain(s: ptr Shared) {.thread.} =
       var ready: bool
       withLock s.lock:
         s.backend = renderer.backend
+        s.live = renderer.live
         ready = publish(s, jobs)
       if ready:
         signal(s.readyFd)
@@ -425,6 +519,11 @@ proc readyFd*(w: MatrixWorker): cint =
 proc clearReady*(w: MatrixWorker) =
   drain(w.shared.readyFd)
 
+proc liveResources*(w: MatrixWorker): LiveResources =
+  withLock w.shared.lock:
+    result = w.shared.live
+    result.slots = w.shared.slots
+
 proc viewGeneration*(w: MatrixWorker): uint64 =
   withLock w.shared.lock:
     result = w.shared.viewGeneration
@@ -458,6 +557,7 @@ proc setTargets*(w: MatrixWorker, targets: openArray[MatrixTarget]) =
   withLock w.shared.lock:
     let s = w.shared
     var outputs: seq[OutputSlots]
+    inc s.targetsVersion
     for target in targets:
       var kept = false
       for i in 0 ..< s.outputs.len:
@@ -468,11 +568,11 @@ proc setTargets*(w: MatrixWorker, targets: openArray[MatrixTarget]) =
             kept = true
           break
       if not kept:
-        outputs.add newOutput(target)
+        outputs.add s.newOutput(target)
     for output in s.outputs:
       for slot in output.slots:
         if not slot.isNil:
-          slot.detach()
+          s.detach(slot)
     s.outputs = outputs
   w.wake()
 
@@ -512,7 +612,7 @@ proc release*(w: MatrixWorker, lease: var FrameLease) =
     if lease.slot.attached:
       lease.slot.state = ssFree
     else:
-      freeSlot(lease.slot)
+      w.shared.freeSlot(lease.slot)
   lease.slot = nil
   lease.pixels = nil
   w.wake()
@@ -526,7 +626,7 @@ proc stop*(w: MatrixWorker) =
   let s = w.shared
   for output in s.outputs:
     for slot in output.slots:
-      freeSlot(slot)
+      s.freeSlot(slot)
   s.outputs.setLen(0)
   discard posix.close(s.wakeFd)
   discard posix.close(s.readyFd)

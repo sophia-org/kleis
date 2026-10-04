@@ -141,6 +141,62 @@ suite "matrix worker":
     w.release(resized)
     w.stop()
 
+proc settle(w: MatrixWorker, expected: LiveResources, ms = 3000): LiveResources =
+  ## The worker's resources once it has caught up with the current targets.
+  let deadline = epochTime() + ms / 1000
+  result = w.liveResources
+  while result != expected and epochTime() < deadline:
+    sleep(10)
+    result = w.liveResources
+
+suite "matrix worker resources":
+  test "allocation churn returns to the current targets' resources":
+    let w = startMatrixWorker(config(frameMs = 30), matrixView)
+    var held: seq[FrameLease]
+    for round in 1 .. 60:
+      let size = 32 + (round mod 5) * 16
+      w.setTargets(
+        [
+          MatrixTarget(allocation: uint64(round), width: size * 2, height: size),
+          MatrixTarget(allocation: 1000, width: 64 + (round mod 3) * 640, height: 48),
+        ]
+      )
+      if round mod 10 == 0:
+        let lease = w.next(uint64(round))
+        if lease.isSome:
+          held.add lease.get
+    check held.len > 0
+    for lease in held.mitems:
+      w.release(lease)
+    w.setTargets(
+      [
+        MatrixTarget(allocation: 1, width: 320, height: 200),
+        MatrixTarget(allocation: 2, width: 1920, height: 100),
+      ]
+    )
+    var a = w.next(1).get
+    var b = w.next(2).get
+    w.release(a)
+    w.release(b)
+    # Two outputs: four slots, one CPU field and timing each, and an atlas
+    # for each cell size (8 and 24 pixels).
+    let expected =
+      LiveResources(slots: 4, gpuTargets: 0, cpuOutputs: 2, timings: 2, atlases: 2)
+    check w.settle(expected) == expected
+    w.setTargets([])
+    check w.settle(LiveResources()) == LiveResources()
+    w.stop()
+
+  test "a leased frame of a removed output is freed on release":
+    let w = startMatrixWorker(config(), matrixView)
+    w.setTargets([MatrixTarget(allocation: 6, width: 40, height: 30)])
+    var lease = w.next(6).get
+    w.setTargets([])
+    check w.settle(LiveResources(slots: 1)).slots == 1
+    w.release(lease)
+    check w.settle(LiveResources()) == LiveResources()
+    w.stop()
+
 suite "gpu grant":
   test "the grant comes from Sophia's environment, in direct mode only":
     putEnv("SOPHIA_SHELL_GPU_MODE", "direct")
