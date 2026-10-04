@@ -27,9 +27,10 @@ blank #false
 // Reduces EGL/driver attack surface; useful on hardened setups.
 no-gpu #false
 
-// Blank the screen after this many seconds of inactivity (0 = disabled).
-// The screen wakes back to matrix on the next keypress.
-idle-timeout 0
+// Blank the screen after this many seconds of inactivity (default 300;
+// 0 = never). Blank renders and uploads nothing, so this is the largest
+// power saving for an unattended laptop. Any keypress brings back the rain.
+idle-timeout 300
 
 // Matrix rain frames per second (1-120, default 30). Each frame costs CPU
 // and power; on a laptop keep this low and set idle-timeout so an

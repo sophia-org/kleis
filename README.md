@@ -62,8 +62,9 @@ sandbox has no HOME. CLI options override file values. See
 
 Matrix rain is the default. Typing cycles the input palette; failed
 authentication shows the failure color. Alt-B toggles Matrix and blank.
-`blank #true` starts blank. `idle-timeout 60` blanks after 60 seconds without
-UI activity, avoiding continuous animation while unattended. `matrix-fps` sets
+`blank #true` starts blank. `idle-timeout` blanks after that many seconds
+without UI activity (default 300; 0 never blanks), stopping all rendering
+while unattended. `matrix-fps` sets
 the rain's frame rate (1-120, default 30); each frame is rendered and uploaded,
 so a lower rate and an idle timeout save power on a laptop.
 

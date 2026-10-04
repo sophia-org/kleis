@@ -108,6 +108,7 @@ suite "cli":
     expect ValueError:
       discard parseOptions(@["--idle-timeout", "-1"])
 
-  test "idleTimeoutSecs defaults to zero":
+  test "idleTimeoutSecs defaults to five minutes":
     let opts = parseOptions(@[])
-    check opts.idleTimeoutSecs == 0
+    check opts.idleTimeoutSecs == IdleTimeoutSecsDefault
+    check IdleTimeoutSecsDefault == 300

@@ -2,6 +2,8 @@ import std/[options, parseutils, strutils]
 
 const Version* = "0.1.0"
 const MatrixFpsDefault* = 30
+## An unattended lock screen stops animating after five minutes; 0 never blanks.
+const IdleTimeoutSecsDefault* = 300
 const MatrixCellScaleAuto* = 0.0
 const MatrixCellScaleDefault* = MatrixCellScaleAuto
 const MatrixFallSpeedDefault* = 0.3
@@ -58,7 +60,7 @@ const Usage* = """usage: kleis [options]
   --blank                          Start with a blank screen instead of Matrix.
   --no-gpu                         Render on the CPU without initializing EGL.
   --idle-timeout <seconds>         Blank the screen after this many seconds of
-                                   inactivity. 0 disables (default: 0).
+                                   inactivity. 0 disables (default: 300).
 
   --config <path>                  Load configuration from <path>.
   --no-config                      Do not load any configuration file.
@@ -80,6 +82,7 @@ proc defaultOptions*(): Options =
       # Father (Tyrian indigo/violet), Son (royal blue), Spirit (life green)
     failColor: 0x8B0000'u32, # deep crimson
     logLevel: llError,
+    idleTimeoutSecs: IdleTimeoutSecsDefault,
     matrixFps: MatrixFpsDefault,
     matrixCellScale: MatrixCellScaleDefault,
     matrixFallSpeed: MatrixFallSpeedDefault,
