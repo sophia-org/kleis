@@ -224,6 +224,8 @@ proc frames(w: MatrixWorker, expected: int): int =
     sleep(10)
     result = w.liveResources.frames
 
+var hookWorker: MatrixWorker
+
 proc snapshot(lease: FrameLease): seq[uint32] =
   result = newSeq[uint32](lease.width * lease.height)
   for i in 0 ..< result.len:
@@ -283,6 +285,31 @@ suite "gpu worker handover":
     for i in 0 ..< cpu.width * cpu.height:
       check (cpu.pixels[i] shr 24) == 0xff
     w.release(cpu)
+    w.stop()
+
+  test "an output removed while its buffers drain frees them all":
+    let w = softwareWorker()
+    w.setTargets([MatrixTarget(allocation: 5, width: 64, height: 48)])
+    # Both slots get a readback buffer.
+    for _ in 0 ..< 3:
+      var lease = w.next(5)
+      w.release(lease)
+    check w.frames(2) == 2
+    {.cast(gcsafe).}:
+      hookWorker = w
+    drainClaimedHook = proc() {.nimcall, gcsafe.} =
+      {.cast(gcsafe).}:
+        if not hookWorker.isNil:
+          hookWorker.setTargets([])
+          hookWorker = nil
+    failNextGpuRender()
+    # The failure leaves the free slots' buffers to drain; the hook removes
+    # their output in the middle of it.
+    check w.settle(LiveResources()) == LiveResources()
+    check not gpuDeviceOpen()
+    {.cast(gcsafe).}:
+      check hookWorker.isNil # the removal did happen mid-drain
+    drainClaimedHook = nil
     w.stop()
 
   test "a device without bgra readback copies into heap frames":

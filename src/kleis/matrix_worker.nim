@@ -541,6 +541,11 @@ proc publish(s: ptr Shared, jobs: seq[Job]): bool =
           other.state = ssFree
     result = true
 
+when defined(kleisGpuSoftwareTest):
+  var drainClaimedHook*: proc() {.nimcall, gcsafe.}
+    ## Tests only: runs on the worker thread, no lock held, while drainGpu
+    ## holds claimed slots.
+
 proc drainRetired(r: var Renderer, s: ptr Shared) =
   ## Deletes the readback buffers of freed slots, then frees the slots. On
   ## the worker thread with no lock held while GL runs.
@@ -571,12 +576,20 @@ proc drainGpu(r: var Renderer, s: ptr Shared, all = false) =
             output.due = true
           slot.state = ssRendering
           claimed.add slot
+  when defined(kleisGpuSoftwareTest):
+    if claimed.len > 0 and not drainClaimedHook.isNil:
+      drainClaimedHook()
   for slot in claimed:
     r.dropFrame(slot)
     slot.pixels = slot.heap
   withLock s.lock:
     for slot in claimed:
-      slot.state = ssFree
+      # Its output may have been removed or resized meanwhile, as for a
+      # rendered frame (publish): then nobody else will free it.
+      if slot.attached:
+        slot.state = ssFree
+      else:
+        s.freeSlot(slot)
   r.drainRetired(s)
   if r.frames == 0:
     r.closeGpu()
