@@ -12,8 +12,8 @@ import ./cli
 const
   ConfigDirName* = "kleis"
   ConfigFileName* = "config.kdl"
-  MatrixFrameMsMin* = 30
-  MatrixFrameMsMax* = 5000
+  MatrixFpsMin* = 1
+  MatrixFpsMax* = 120
   MatrixCellScaleMin* = 1.0
   MatrixCellScaleMax* = 8.0
   MatrixFallSpeedMin* = 0.01
@@ -187,19 +187,24 @@ proc applyConfigDoc*(opts: var Options, doc: KdlDoc) =
       raise newException(ValueError, "idle-timeout must be >= 0")
     opts.idleTimeoutSecs = int(secs)
 
-  let matrixFrameNode = doc.findNode("matrix-frame-ms")
-  if matrixFrameNode.isSome:
-    let n = matrixFrameNode.get
+  if doc.findNode("matrix-frame-ms").isSome:
+    raise newException(
+      ValueError,
+      "matrix-frame-ms has been replaced by matrix-fps (40 ms = matrix-fps 25)",
+    )
+
+  let matrixFpsNode = doc.findNode("matrix-fps")
+  if matrixFpsNode.isSome:
+    let n = matrixFpsNode.get
     if n.args.len < 1:
-      raise newException(ValueError, "matrix-frame-ms requires an integer value")
+      raise newException(ValueError, "matrix-fps requires an integer value")
     let value = n.args[0].kInt()
-    if value < MatrixFrameMsMin or value > MatrixFrameMsMax:
+    if value < MatrixFpsMin or value > MatrixFpsMax:
       raise newException(
         ValueError,
-        "matrix-frame-ms must be between " & $MatrixFrameMsMin & " and " &
-          $MatrixFrameMsMax,
+        "matrix-fps must be between " & $MatrixFpsMin & " and " & $MatrixFpsMax,
       )
-    opts.matrixFrameMs = int(value)
+    opts.matrixFps = int(value)
 
   let matrixCellScaleNode = doc.findNode("matrix-cell-scale")
   if matrixCellScaleNode.isSome:

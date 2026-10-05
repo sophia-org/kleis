@@ -90,6 +90,36 @@
       nimble = "nimble --offline --useSystemNim";
       tools = [ pkgs.nim pkgs.nimble pkgs.nph ];
 
+      # The matrix worker renders offscreen on the render node Sophia grants,
+      # through GBM, EGL and GLES. Nixpkgs' libgbm and libglvnd look for Mesa
+      # under /run/opengl-driver, and libglvnd also under /usr/share, whose
+      # vendor files name the host's Mesa. Neither suits a non-NixOS host.
+      # These copies, the same as Sophia's, look only at the pinned Mesa, with
+      # no environment variables. kleis links them, so they come first in its
+      # run path.
+      mesa = pkgs.mesa;
+      gbmBackendsFlag = "-Dgbm-backends-path=${pkgs.addDriverRunpath.driverLink}/lib/gbm";
+      scopedGbm = pkgs.libgbm.overrideAttrs (old: {
+        # Built from the pinned Mesa's source, matching its GBM backend.
+        inherit (mesa) version src;
+        mesonFlags =
+          assert lib.assertMsg (builtins.elem gbmBackendsFlag old.mesonFlags)
+            "libgbm no longer sets ${gbmBackendsFlag}";
+          map (flag: if flag == gbmBackendsFlag then "-Dgbm-backends-path=${mesa}/lib/gbm" else flag)
+            old.mesonFlags;
+      });
+      eglVendorDirs = "${pkgs.addDriverRunpath.driverLink}/share/glvnd/egl_vendor.d:/etc/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d";
+      scopedGlvnd = pkgs.libglvnd.overrideAttrs (old: {
+        env = old.env // {
+          NIX_CFLAGS_COMPILE =
+            assert lib.assertMsg (lib.hasInfix eglVendorDirs old.env.NIX_CFLAGS_COMPILE)
+              "libglvnd no longer sets its EGL vendor directories as expected";
+            builtins.replaceStrings [ eglVendorDirs ] [ "${mesa}/share/glvnd/egl_vendor.d" ]
+              old.env.NIX_CFLAGS_COMPILE;
+        };
+      });
+      graphics = [ scopedGbm scopedGlvnd ];
+
       # Stage 2 (measurement): kleis built by its own nimble build task inside
       # Nix's sandbox, with the unit tests as its check phase. The bwrap-isolated
       # release build remains the deliverable; this binary links /nix/store.
@@ -97,7 +127,8 @@
         pname = "kleis";
         version = "0.0.0-nix-measurement";
         src = self;
-        nativeBuildInputs = tools;
+        nativeBuildInputs = tools ++ [ pkgs.pkg-config ];
+        buildInputs = graphics;
         dontConfigure = true;
         buildPhase = ''
           runHook preBuild
@@ -138,7 +169,7 @@
       # Tools and environment only: this shell gives no filesystem, device or
       # network isolation. The bwrap-isolated product build stays the gate.
       devShells.${system}.default = pkgs.mkShell.override { stdenv = pkgs.gcc14Stdenv; } {
-        packages = [ pkgs.nim pkgs.nimble pkgs.nph pkgs.git ];
+        packages = [ pkgs.nim pkgs.nimble pkgs.nph pkgs.git pkgs.pkg-config ] ++ graphics;
         shellHook = nimbleHome;
       };
     };

@@ -439,3 +439,70 @@ One scratch run against Sophia's production lock export passed (Sophia
 vendored. Until it passes, `compatibility.json` declares `lock_files` false.
 Upload throughput is bound by the single upload write in flight. Pipelining
 uploads is a follow-up that needs no contract change.
+
+## Release candidate 0.9.0: bounded lock upload pipelining
+
+All contract copies remain byte-identical to 0.8.0. The experimental lock
+client adds opt-in windows of one to eight Twrites on the existing upload
+cursor. Default one-write behavior remains. Five request slots are reserved
+for non-upload work; kleis uses sixteen slots and a window of eight. The
+caller-allocated client grows, so consumers must rebuild for this 0.x release.
+
+Each write has a distinct handle and count. Reply reordering preserves issued
+offsets, and End requires all bytes acknowledged. Cancel stops new writes and
+drains outstanding replies before releasing the borrowed frame. A short write
+in a pipeline cancels the resource instead of guessing the remote cursor.
+A terminal resource status also drains outstanding writes before closing its
+fid. A terminal connection is disposed rather than replayed.
+An upload Rerror now cancels the resource in single-write mode too, rather
+than only closing its fid. The peer's errno is retained; a pipelined short
+reply requests cancellation without inventing a remote errno.
+After the last outstanding reply, an internally queued Cancel creates its
+wire request in that same service call. Poll interest exposes the write
+immediately; applications do not need a timer to advance local SDK work.
+
+Local scripted controls cover a withheld first reply, reverse replies, input
+and ack progress with eight writes held, cancellation during an upload, short
+and failed writes, resource rejection while writes remain, disconnect, and
+single-write short-write retry. Four mutants (serializing the window, early
+borrow release, wrong offsets and ignoring cancellation) fail named assertions.
+The strict C suites, generator checks and all suites under clang ASan/UBSan
+pass. Production integration and device throughput are separate Sophia gates;
+this record makes no throughput claim.
+
+## Release candidate 0.10.0: borrowed Twrite for lock uploads
+
+All contract copies remain byte-identical to 0.9.0. The generic 9P client adds
+`sophia_9p_write_borrowed`: the request slot keeps only the 23-byte Twrite
+header, and the payload is sent from the caller's bytes with `sendmsg`,
+resuming a partial send across header and payload. The header names the
+borrow's release points: the request's reply, the reply to a successful
+flush of it, or a terminal wire failure or disposal of the client; a refused
+call borrows nothing, and no other error ends a borrow. `struct
+sophia_9p_slot` gains one pointer, so `struct sophia_9p_client`, which
+callers allocate, grows with it. Every source consumer of the generic
+client, not only the lock role, must rebuild with these headers; an old
+allocated layout must never be used with this library.
+
+The lock client's upload writes use it. Their bytes were already borrowed
+until every issued write settles, which outlasts sending them, so the lock
+API and its lifetime rule are unchanged; the copy into request storage is
+gone. Other roles keep copied writes.
+
+`sophia_9p_client_test` sends a copied and a borrowed Twrite of the largest
+payload five bytes per service pass, so one pass spans header and payload,
+and requires identical wire bytes apart from the tag; it also checks the
+argument refusals. A mutant that sends the payload from the wrong offset
+fails that comparison. Further controls: a 64 KiB borrowed write against the
+smallest send buffer the kernel allows meets real EAGAIN and still sends the
+exact bytes; a borrowed write flushed while partly sent is sent whole before
+its Tflush and nothing is sent after Rflush; a peer that closes with bytes
+unsent ends the client with a stable terminal error that admits no new
+borrow; and a reply to a borrowed write still being sent fails the client.
+Those three free the caller's bytes at the release point, so a sanitizer
+build sees any later read in user space. They cannot see one inside the
+kernel: a mutant that keeps calling sendmsg after a terminal failure passes,
+because a dead socket copies nothing and puts nothing on the wire. The
+strict C suites pass, and all suites pass under clang ASan/UBSan. This
+removes a user-space copy of the payload, not the kernel's copy; this record
+makes no throughput claim.

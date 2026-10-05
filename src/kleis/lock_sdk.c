@@ -5,7 +5,7 @@
 #include <string.h>
 
 #define KLEIS_MSIZE 65536u
-#define KLEIS_REQUESTS 8u
+#define KLEIS_REQUESTS 16u
 #define KLEIS_FIDS 32u
 
 struct kleis_lock {
@@ -39,7 +39,8 @@ kleis_lock *kleis_lock_open(int fd, uint16_t chord_count,
   if (!lock->storage ||
       sophia_9p_init(&lock->wire, fd, KLEIS_MSIZE, KLEIS_REQUESTS, KLEIS_FIDS,
                      lock->storage, bytes) ||
-      sophia_lc_init(&lock->client, &lock->wire, &offer)) {
+      sophia_lc_init(&lock->client, &lock->wire, &offer) ||
+      sophia_lc_upload_window(&lock->client, 8)) {
     kleis_lock_free(lock);
     return NULL;
   }

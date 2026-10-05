@@ -1,6 +1,7 @@
 #include "internal.h"
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 
 size_t sophia_9p_storage_bytes(uint32_t msize, uint16_t requests)
 {
@@ -140,7 +141,26 @@ static int output(struct sophia_9p_client *c, size_t budget)
         amount = s->bytes - s->sent;
         if (amount > budget)
             amount = budget;
-        n = send(c->fd, p9_data(c, best) + s->sent, amount, MSG_DONTWAIT | MSG_NOSIGNAL);
+        if (s->borrowed) {
+            /* Header from the slot, payload from the caller, in one call. */
+            size_t head = s->bytes - s->count;
+            struct iovec v[2];
+            struct msghdr m = {0};
+            m.msg_iov = v;
+            if (s->sent < head) {
+                v[0].iov_base = p9_data(c, best) + s->sent;
+                v[0].iov_len = head - s->sent < amount ? head - s->sent : amount;
+                v[1].iov_base = (void *)(uintptr_t)s->borrowed;
+                v[1].iov_len = amount - v[0].iov_len;
+                m.msg_iovlen = v[1].iov_len ? 2 : 1;
+            } else {
+                v[0].iov_base = (void *)(uintptr_t)(s->borrowed + (s->sent - head));
+                v[0].iov_len = amount;
+                m.msg_iovlen = 1;
+            }
+            n = sendmsg(c->fd, &m, MSG_DONTWAIT | MSG_NOSIGNAL);
+        } else
+            n = send(c->fd, p9_data(c, best) + s->sent, amount, MSG_DONTWAIT | MSG_NOSIGNAL);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
@@ -152,8 +172,10 @@ static int output(struct sophia_9p_client *c, size_t budget)
             return c->terminal = SOPHIA_9P_IO;
         s->sent += (size_t)n;
         budget -= (size_t)n;
-        if (s->sent == s->bytes)
+        if (s->sent == s->bytes) {
             s->state = P9_SENT;
+            s->borrowed = NULL;
+        }
     }
     return 0;
 }

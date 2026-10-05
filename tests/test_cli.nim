@@ -74,7 +74,7 @@ suite "cli":
 
   test "matrix frame timing default":
     let opts = parseOptions(@[])
-    check opts.matrixFrameMs == MatrixFrameMsDefault
+    check opts.matrixFps == MatrixFpsDefault
     check opts.matrixCellScale == MatrixCellScaleDefault
     check opts.matrixFallSpeed == MatrixFallSpeedDefault
     check opts.matrixCycleSpeed == MatrixCycleSpeedDefault
@@ -108,6 +108,7 @@ suite "cli":
     expect ValueError:
       discard parseOptions(@["--idle-timeout", "-1"])
 
-  test "idleTimeoutSecs defaults to zero":
+  test "idleTimeoutSecs defaults to five minutes":
     let opts = parseOptions(@[])
-    check opts.idleTimeoutSecs == 0
+    check opts.idleTimeoutSecs == IdleTimeoutSecsDefault
+    check IdleTimeoutSecsDefault == 300

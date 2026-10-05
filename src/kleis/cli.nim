@@ -1,7 +1,9 @@
 import std/[options, parseutils, strutils]
 
 const Version* = "0.1.0"
-const MatrixFrameMsDefault* = 40
+const MatrixFpsDefault* = 30
+## An unattended lock screen stops animating after five minutes; 0 never blanks.
+const IdleTimeoutSecsDefault* = 300
 const MatrixCellScaleAuto* = 0.0
 const MatrixCellScaleDefault* = MatrixCellScaleAuto
 const MatrixFallSpeedDefault* = 0.3
@@ -41,7 +43,7 @@ type
     blank*: bool
     noGpu*: bool
     idleTimeoutSecs*: int
-    matrixFrameMs*: int
+    matrixFps*: int
     matrixCellScale*: float
     matrixFallSpeed*: float
     matrixCycleSpeed*: float
@@ -56,10 +58,9 @@ const Usage* = """usage: kleis [options]
   --log-level <level>              Set log level: error, warning, info, debug.
 
   --blank                          Start with a blank screen instead of Matrix.
-  --no-gpu                         Render on the CPU. The Sophia build renders
-                                   on the CPU only for now.
+  --no-gpu                         Render on the CPU without initializing EGL.
   --idle-timeout <seconds>         Blank the screen after this many seconds of
-                                   inactivity. 0 disables (default: 0).
+                                   inactivity. 0 disables (default: 300).
 
   --config <path>                  Load configuration from <path>.
   --no-config                      Do not load any configuration file.
@@ -81,7 +82,8 @@ proc defaultOptions*(): Options =
       # Father (Tyrian indigo/violet), Son (royal blue), Spirit (life green)
     failColor: 0x8B0000'u32, # deep crimson
     logLevel: llError,
-    matrixFrameMs: MatrixFrameMsDefault,
+    idleTimeoutSecs: IdleTimeoutSecsDefault,
+    matrixFps: MatrixFpsDefault,
     matrixCellScale: MatrixCellScaleDefault,
     matrixFallSpeed: MatrixFallSpeedDefault,
     matrixCycleSpeed: MatrixCycleSpeedDefault,

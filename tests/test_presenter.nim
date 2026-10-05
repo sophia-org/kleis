@@ -165,3 +165,91 @@ suite "presenter":
     check p.next().kind == akNone
     p.setLock(true, 5, [alloc(1)])
     check p.next().kind == akUpload
+
+  test "input cancels only obsolete rain and a late accept is retired":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1)])
+    p.setView(1, true)
+    let rain = p.take(akUpload)
+    p.setView(2, false)
+    check p.cancelUpload
+    p.uploadStatus(rain.resource, 2) # End beat the cancellation.
+    check not p.cancelUpload
+    check p.outputs[0].ready == 0
+    check p.take(akRetire).resource == rain.resource
+    let feedback = p.take(akUpload)
+    p.setView(3, false)
+    p.setView(4, false)
+    check not p.cancelUpload # Finish one feedback while newer colors coalesce.
+    p.uploadStatus(feedback.resource, 2)
+    check p.take(akDemand).kind == akDemand
+    check p.outputs[0].dirty
+
+  test "input discards rain waiting on a permit but ignores its late permit":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1)])
+    p.setView(1, true)
+    let rain = p.take(akUpload)
+    p.uploadStatus(rain.resource, 2)
+    let demand = p.take(akDemand)
+    p.setView(2, false)
+    p.permit(41, 1, demand.demand, 7)
+    check p.outputs[0].stage == stIdle
+    check p.take(akRetire).resource == rain.resource
+    check p.next().kind == akUpload
+
+  test "input arriving before Begin custody still cancels the stale rain":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1)])
+    p.setView(1, true)
+    let rain = p.next()
+    p.setView(2, false)
+    p.applied(rain)
+    check p.cancelUpload
+    p.uploadStatus(rain.resource, 4)
+    check not p.cancelUpload and p.outputs[0].dirty
+    check not p.take(akUpload).animation
+
+  test "upload choice rotates even when the first output always finishes first":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1), alloc(2)])
+    for turn in 0 ..< 10:
+      p.markDirty()
+      let upload = p.take(akUpload)
+      check upload.index == turn mod 2
+      p.uploadStatus(upload.resource, 2)
+      let demand = p.take(akDemand)
+      p.permit(upload.target.allocation, 1, demand.demand, uint64(turn + 1))
+      let candidate = p.take(akCandidate)
+      p.outcome(upload.target.allocation, candidate.candidateGeneration, 2)
+      while p.next().kind == akRetire:
+        discard p.take(akRetire)
+
+  test "a missing worker frame does not stall another ready output":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1), alloc(2)])
+    let first = p.next()
+    p.noFrame(first.index)
+    check p.next().index == 1
+    p.noFrame(1)
+    check p.next().kind == akNone
+    p.markDirty() # worker notification re-arms availability
+    check p.next().kind == akUpload
+
+  test "topology changes between issue and custody preserve resource identity":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1), alloc(2)])
+    let first = p.next()
+    p.setLock(true, 5, [alloc(2)])
+    p.applied(first)
+    check p.cancelUpload and p.outputs[0].uploading == 0
+    p.uploadStatus(first.resource, 2)
+    check p.take(akRetire).resource == first.resource
+    check p.next().target == alloc(2)
+    # A still-live target is found even if another output was removed first.
+    let second = p.take(akUpload)
+    p.uploadStatus(second.resource, 2)
+    let demand = p.next()
+    p.setLock(true, 5, [])
+    p.applied(demand) # no stale index access or grant to a replacement
+    check p.outputs.len == 0

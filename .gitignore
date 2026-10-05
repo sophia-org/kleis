@@ -9,4 +9,8 @@
 /tests/test_frame
 /tests/test_ui
 /tests/test_presenter
+/tests/test_matrix_gpu
+/tests/test_matrix_time
+/tests/test_matrix_worker
+/tests/test_provider_retry
 /tools/kleis_render

@@ -16,6 +16,7 @@ const sdkSource =
 {.compile: sdkSource / "lock_files/records.c".}
 {.compile: sdkSource / "lock_files/client.c".}
 {.compile: sdkSource / "lock_files/session.c".}
+{.compile: sdkSource / "lock_files/upload.c".}
 {.compile: "lock_sdk.c".}
 
 const
