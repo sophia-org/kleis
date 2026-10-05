@@ -1,22 +1,18 @@
-tree bf210c52114eeda8b6cdf408ea1a1797af98085e
-parent a5dc5895baaf0928594c3f084616f804e6fdab4e
-author Mason Green <mason@greenm01.net> 1791149821 -0400
-committer Mason Green <mason@greenm01.net> 1791149821 -0400
+tree 48af6bf0c1eadbf982c2043ab0466bdb8b3000a1
+parent 6259041b736ce148d9ab86d2dca4d4b3ae68c626
+author Mason Green <mason@greenm01.net> 1791158633 -0400
+committer Mason Green <mason@greenm01.net> 1791158640 -0400
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasLG/RsUgAAAAAAEAA5t
- YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGJVqgEApa5neF7LrC5OYJnJZ8OT
- YXyZXqZIxK7e8BX6gEGl/bgBAJwJB+BnL3VIbll9W0QIRIXvKKYiLv7MvbN/T6zT
- JKsB
- =wB57
+ iJAEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasLpcBsUgAAAAAAEAA5t
+ YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGL92wD+Lraj+fsEAby04mMEJMWk
+ 460XrNVEw+AAE11y2Pk+8UkA92r8rW2xudrfwPWzYS9HMyhUBB/inOPPxp4Kr/N2
+ kQg=
+ =GOyc
  -----END PGP SIGNATURE-----
 
-Control borrowed writes under backpressure, flush, close and early reply
+Release candidate C SDK 0.10.0: borrowed lock upload writes
 
-A 64 KiB borrowed write meets real EAGAIN and still sends exact bytes; a
-partly sent borrowed write is sent whole before its flush; a closed peer
-ends the client with a stable error and no new borrow; and an early reply
-to a write still being sent fails the client. The header now names a
-successful flush and a terminal wire failure as release points, and
-PROVENANCE records the slot and client layout growth. Review notes from
-Codex.
+compatibility.json and the pkg-config version name 0.10.0, as PROVENANCE
+records it: the 0.9.0 lock upload pipelining plus borrowed Twrites. No
+code changes; every consumer of the generic client rebuilds.

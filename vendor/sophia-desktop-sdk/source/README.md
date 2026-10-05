@@ -18,7 +18,7 @@ to tunnel the old socket protocol through a file.
 
 ## Current coverage
 
-Release 0.9.0 provides a generic nonblocking 9P2000.L client, shell file
+Release 0.10.0 provides a generic nonblocking 9P2000.L client, shell file
 records and sessions for bar (r6), native launcher (r7) and persistent
 catalog/dock (r8), WM and output file codecs and sessions, and an experimental
 lock provider codec and client. WM and shell socket
