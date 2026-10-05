@@ -77,6 +77,16 @@ proc readLock(p: var Provider) =
   p.worker.setTargets(targets)
   p.syncView()
 
+proc reportBlocked(p: Provider, before: openArray[bool], cause: string) =
+  ## One line per output the presenter just blocked (t308): it stays blocked,
+  ## drawing nothing new, until the next lock object.
+  for a in p.presenter.newlyBlocked(before):
+    stderr.writeLine(
+      "kleis: output " & $a.output & " (allocation " & $a.allocation & " generation " &
+        $a.allocationGeneration & ") blocked after " & cause &
+        "; waiting for a new lock object"
+    )
+
 proc drainEvents(p: var Provider): bool =
   var e: LockEvent
   for _ in 0 ..< 64:
@@ -89,7 +99,9 @@ proc drainEvents(p: var Provider): bool =
     of KindObjectPublished:
       p.readLock()
     of KindResourceStatus:
+      let blocked = p.presenter.blockedFlags()
       p.presenter.uploadStatus(e.resource_id, e.status)
+      p.reportBlocked(blocked, "a rejected upload")
       if e.status != ResourceAdmitted:
         p.chunkGiven = false
     of KindCandidateOutcome:
@@ -124,7 +136,9 @@ proc settlePending(p: var Provider): bool =
     p.pending = Action()
     result = true
   elif stage == SubmissionRefused:
+    let blocked = p.presenter.blockedFlags()
     p.presenter.refused(p.pending)
+    p.reportBlocked(blocked, "a refused record")
     p.pending = Action()
     result = true
 
@@ -132,7 +146,9 @@ proc driveUpload(p: var Provider): bool =
   let owner = p.presenter.uploadOwner()
   if p.handle.lockUploadPending() == 0:
     if owner >= 0 and p.pending.kind == akNone:
+      let blocked = p.presenter.blockedFlags()
       p.presenter.uploadStatus(p.presenter.outputs[owner].uploading, ResourceRejected)
+      p.reportBlocked(blocked, "an upload that ended without a status")
     result = not p.lease.pixels.isNil or p.presenter.cancelUpload
     p.worker.release(p.lease)
     p.presenter.uploadEnded()

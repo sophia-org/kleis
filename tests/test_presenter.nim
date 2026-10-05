@@ -166,6 +166,20 @@ suite "presenter":
     p.setLock(true, 5, [alloc(1)])
     check p.next().kind == akUpload
 
+  test "a newly blocked output is named once (t308)":
+    var p = initPresenter()
+    p.setLock(true, 5, [alloc(1), alloc(2)])
+    var before = p.blockedFlags()
+    check p.newlyBlocked(before).len == 0
+    let up = p.next()
+    p.refused(up)
+    let named = p.newlyBlocked(before)
+    check named.len == 1 and named[0].output == up.target.output
+    before = p.blockedFlags()
+    check p.newlyBlocked(before).len == 0 # still blocked, not named again
+    p.setLock(true, 5, [alloc(1), alloc(2)])
+    check p.blockedFlags() == @[false, false]
+
   test "input cancels only obsolete rain and a late accept is retired":
     var p = initPresenter()
     p.setLock(true, 5, [alloc(1)])

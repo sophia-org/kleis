@@ -250,6 +250,18 @@ proc applied*(p: var Presenter, a: Action) =
     if a.animation and a.viewGeneration != p.viewGeneration:
       p.cancelUpload = true
 
+proc blockedFlags*(p: Presenter): seq[bool] =
+  ## Which outputs wait for a new lock object, in output order.
+  for o in p.outputs:
+    result.add o.blocked
+
+proc newlyBlocked*(p: Presenter, before: openArray[bool]): seq[Allocation] =
+  ## The allocations blocked now that were not in `before` (t308): each is
+  ## said once, so a frozen output is never silent.
+  for i, o in p.outputs:
+    if o.blocked and (i >= before.len or not before[i]):
+      result.add o.alloc
+
 proc refused*(p: var Presenter, a: Action) =
   ## The server refused the record outright: nothing was journaled. The
   ## transaction is spent; the output waits for a new lock object.
