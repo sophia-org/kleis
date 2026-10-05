@@ -99,9 +99,13 @@ proc drainEvents(p: var Provider): bool =
     of KindObjectPublished:
       p.readLock()
     of KindResourceStatus:
-      let blocked = p.presenter.blockedFlags()
-      p.presenter.uploadStatus(e.resource_id, e.status)
-      p.reportBlocked(blocked, "a rejected upload")
+      # Only a rejection can block an output; ordinary statuses skip the check.
+      if e.status == ResourceRejected:
+        let blocked = p.presenter.blockedFlags()
+        p.presenter.uploadStatus(e.resource_id, e.status)
+        p.reportBlocked(blocked, "a rejected upload")
+      else:
+        p.presenter.uploadStatus(e.resource_id, e.status)
       if e.status != ResourceAdmitted:
         p.chunkGiven = false
     of KindCandidateOutcome:
