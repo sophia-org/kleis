@@ -18,7 +18,7 @@ to tunnel the old socket protocol through a file.
 
 ## Current coverage
 
-Release 0.10.0 provides a generic nonblocking 9P2000.L client, shell file
+Release 0.9.0 provides a generic nonblocking 9P2000.L client, shell file
 records and sessions for bar (r6), native launcher (r7) and persistent
 catalog/dock (r8), WM and output file codecs and sessions, and an experimental
 lock provider codec and client. WM and shell socket
@@ -62,6 +62,12 @@ production WM export gate has passed (Sophia `c4e17899e`).
 
 The WM session (`sophia_wm_session.h`) owns file bootstrap, immutable candidate
 submission, custody tickets, cumulative acknowledgements and snapshot pins.
+For authenticated endpoints, `sophia_ws_open_attached` continues on the exact
+quiescent wire and root returned by `sophia_launch_auth`. It borrows both
+without Tversion or another attach; callers retain their storage until close.
+The constructor requires eight request slots, sixteen fids and no other live
+fid or pending request. It schedules bootstrap immediately for poll-first
+callers. See the header for storage and overlap requirements.
 It accepts a borrowed fd and caller-owned storage; policy and profile decisions
 remain with the caller and server. See [the WM API notes](src/README-wm.md) for
 lifetimes, deadlines and evidence limits.
@@ -83,6 +89,25 @@ The caller polls and enforces a connection deadline. See
 [the shell API notes](src/README-shell.md) for buffer lifetimes and wire behavior.
 
 ## Build and test
+
+The development authentication API, `sophia_launch_auth.h`, borrows fresh role
+and launch-channel 9P clients and caller-supplied monotonic time. Initialize it
+with `sophia_la_init`, advance it with `sophia_la_service`, and poll both fds plus
+`sophia_la_next_wake` until ready or terminal. It relays only the challenge from
+its own afid and never falls back to ordinary attach. The total deadline is
+five seconds, including cleanup; the caller owns descriptor closure on failure.
+The helper performs no environment lookup or principal selection.
+
+On success, `sophia_la_root` names the admitted role root. For lock providers,
+pass it to `sophia_lc_init_attached`; that constructor starts at `api`, preserving
+the authentication and transport identity. It refuses a busy wire or unknown
+root. Output clients pass that same wire and root to `sophia_os_open_attached`,
+which starts at `api` without resetting or reattaching the transport. It borrows
+the quiescent wire with its root as the only fid; output state and storage must
+be disjoint from that wire and its storage. Its lifecycle tests run through both
+the fresh-wire and admitted-root constructors. WM and shell clients likewise use `sophia_ws_open_attached` and
+`sophia_ss_open_attached`, respectively.
+This is a candidate API, not an automatic migration of existing applications.
 
 Requires a POSIX system, a C99 compiler, GNU make, ar, and sha256sum. Tests use
 Unix socket pairs; they do not discover or connect to a desktop.

@@ -37,7 +37,6 @@ struct sophia_9p_reply {
 struct sophia_9p_slot {
     uint64_t serial, completed;
     size_t bytes, sent;
-    const uint8_t *borrowed;
     uint32_t fid, count;
     uint16_t tag, old_slot;
     uint8_t type, state, flushing, consumed;
@@ -62,6 +61,14 @@ size_t sophia_9p_storage_bytes(uint32_t msize, uint16_t requests);
 int sophia_9p_init(struct sophia_9p_client *, int fd, uint32_t msize, uint16_t requests,
                    uint16_t fids, void *storage, size_t bytes);
 int sophia_9p_version(struct sophia_9p_client *, struct sophia_9p_handle *);
+/* Tauth reserves an afid, not authority. Rauth must carry QTAUTH. Use ordinary
+ * read/write on that afid for the export's conversation, then explicit attach.
+ * Claims use n_uname=NOUID. No credential or environment lookup is performed. */
+int sophia_9p_auth(struct sophia_9p_client *, const char *uname, const char *aname,
+                   struct sophia_9p_handle *, uint32_t *afid);
+int sophia_9p_attach_with_afid(struct sophia_9p_client *, uint32_t afid,
+                              const char *uname, const char *aname,
+                              struct sophia_9p_handle *, uint32_t *fid);
 int sophia_9p_attach(struct sophia_9p_client *, const char *uname, const char *aname,
                      struct sophia_9p_handle *, uint32_t *fid);
 int sophia_9p_walk(struct sophia_9p_client *, uint32_t from, const char *const *names, size_t count,
@@ -72,21 +79,9 @@ int sophia_9p_read(struct sophia_9p_client *, uint32_t fid, uint64_t offset, uin
                    struct sophia_9p_handle *);
 int sophia_9p_write(struct sophia_9p_client *, uint32_t fid, uint64_t offset, const void *data,
                     size_t count, struct sophia_9p_handle *);
-/* As sophia_9p_write, but the slot keeps only the Twrite header and the data
- * is sent from the caller's bytes. A nonzero return borrows nothing. After a
- * zero return the bytes must stay alive and unchanged until the caller
- * observes one of:
- *   - the request's reply through sophia_9p_peek;
- *   - the reply to a successful sophia_9p_flush of it (slots are sent in
- *     order, so the request was sent whole first);
- *   - a terminal wire failure of this client, or its disposal.
- * Nothing else ends the borrow: not a flush request that was refused, nor any
- * other call's error. */
-int sophia_9p_write_borrowed(struct sophia_9p_client *, uint32_t fid, uint64_t offset,
-                             const void *data, size_t count, struct sophia_9p_handle *);
 int sophia_9p_clunk(struct sophia_9p_client *, uint32_t fid, struct sophia_9p_handle *);
 /* Refuses clunks, version, flushes, completed requests and duplicate flushes.
- * Original replies that beat Rflush remain deliverable; unanswered attach/walk
+ * Original replies that beat Rflush remain deliverable; unanswered auth/attach/walk
  * reservations are undone. Tags survive through consume AND any pending flush. */
 int sophia_9p_flush(struct sophia_9p_client *, struct sophia_9p_handle old,
                     struct sophia_9p_handle *);

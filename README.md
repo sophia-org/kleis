@@ -17,6 +17,14 @@ or newer, and GBM, EGL and GLES3 development headers. The pkg-config modules
 are `gbm`, `egl` and `glesv2`. Dependencies must be available locally for the
 offline commands.
 
+Session's `SOPHIA_LAUNCH_AUTH_FD` selects the C SDK's launch-authentication
+conversation before lock-file negotiation. Startup polls both transports under
+the SDK's five-second deadline and lends the authenticated root to the lock
+client. The generation channel stays open, close-on-exec, until teardown.
+Malformed descriptors and failed verification refuse startup; they never fall
+back to plain attach. Supplied-admission tests without the descriptor retain
+their separate plain-attach path.
+
 ```sh
 nimble --offline build
 nimble --offline test

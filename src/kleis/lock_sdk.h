@@ -29,7 +29,10 @@ typedef struct {
   uint32_t pixel_width, pixel_height;
 } kleis_lock_allocation_t;
 
-/* Takes a connected, nonblocking fd. NULL on failure; fd stays the caller's. */
+/* Takes a connected, nonblocking fd. NULL on failure; fd stays the caller's.
+ * A provisioned SOPHIA_LAUNCH_AUTH_FD selects the SDK's bounded five-second
+ * startup conversation. Its channel is owned until free; any failure refuses
+ * startup rather than attempting plain attach. */
 kleis_lock *kleis_lock_open(int fd, uint16_t chord_keysym_count,
                             const uint32_t *keysyms, const uint16_t *modifiers);
 void kleis_lock_free(kleis_lock *);

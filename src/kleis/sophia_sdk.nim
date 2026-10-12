@@ -13,11 +13,13 @@ const sdkSource =
 {.compile: sdkSource / "nine_p/client.c".}
 {.compile: sdkSource / "nine_p/replies.c".}
 {.compile: sdkSource / "nine_p/requests.c".}
+{.compile: sdkSource / "launch_auth/client.c".}
 {.compile: sdkSource / "lock_files/records.c".}
 {.compile: sdkSource / "lock_files/client.c".}
 {.compile: sdkSource / "lock_files/session.c".}
 {.compile: sdkSource / "lock_files/upload.c".}
 {.compile: "lock_sdk.c".}
+{.compile: "lock_auth.c".}
 
 const
   SdkBusy* = 2.cint

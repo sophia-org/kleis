@@ -1,5 +1,56 @@
 # Extraction and contract provenance
 
+## t317 final contract reconciliation
+
+The launch-authentication and shell-descriptor contract snapshots are copied
+from signed Sophia `a41011f27dec1e82b58957099691381c03471231`.
+They document the implemented supervised role boundaries and generic supplied
+descriptor-client conformance seam. This changes documentation and its hashes
+only: no SDK source, tests, ABI or wire layout changes. Earlier execution
+evidence retains its original candidate identity. Final Sophia integration
+and release qualification remain separate gates.
+
+## Authenticated output handoff (t317)
+
+The first joined Session run exposed an unscheduled bootstrap after successful
+authentication: the borrowed constructor returned without queuing `api`, so a
+poll-driven caller waited until its deadline. The constructor now starts the
+same bounded bootstrap driver as the fresh-fd entry point. Both constructors
+must immediately expose writable work or a zero timeout. Removing that drive
+fails `output bootstrap must schedule its first request without peer input`.
+Device-hidden full `make check`, the focused omission control and the restored
+full suite pass. Their self-excluding manifest identities are respectively:
+
+- `t317-output-sdk-schedule-01`: `6f12d2bfef802194d3c66766358dde4c0d21f6086a78437e7a35bbf8dc0992f0`.
+- `t317-output-sdk-schedule-control-01`: `1bdf8b93dced799287b2df53c84f9fd4349f9e7cb48978e66676edfcf7e3102c`.
+- `t317-output-sdk-schedule-restored-01`: `6f12d2bfef802194d3c66766358dde4c0d21f6086a78437e7a35bbf8dc0992f0`.
+
+`spec/sophia-output-files.md` is copied from signed Sophia commit
+`d5c9b63a3aa0fc088d45467700b6c131a1902c36`. It specifies the verified-afid
+startup and exact admitted-root handoff; no output record layout changes.
+`sophia_os_open_attached` borrows that quiescent wire and sole root, refusing
+pending work, unknown roots, insufficient bounds and overlapping storage.
+It begins with `api`, leaving transport identity and negotiated 9P state intact.
+
+Device-hidden `make check` passes with the existing scripted output lifecycle
+scenarios exercised through both constructors. These supply admission and do
+not claim a real Factotum exchange. Forcing the new constructor to plain attach
+fails at `output role handoff must not attach again`; the restored full suite
+passes. An earlier reset control was stopped for a wrong prediction: the
+generic 9P client's phase guard refused Tversion before the scripted peer saw
+it, failing the progress assertion. That STOP record is retained unchanged.
+
+Evidence package manifest SHA-256 identities:
+
+- `t317-output-sdk-02`: `50f00c3dcb7348cbf57cab1617dbdd924cb0dd8997a4cc0633eb4fd1b3ffbc28`.
+- `t317-output-sdk-reattach-control-01`: `cc952882e5c182884ea0c8bf8b966f9b2e364faf68c386d3916faec743f42053`.
+- `t317-output-sdk-restored-02`: `50f00c3dcb7348cbf57cab1617dbdd924cb0dd8997a4cc0633eb4fd1b3ffbc28`.
+
+The packages record dynamic candidate hashes and executable paths/hashes;
+no binaries are copied. The normative copy and its digest were updated after
+the code runs and checked separately. Production output-owner interoperability
+and migration of the native proof remain Sophia integration work.
+
 Initial source: `https://github.com/sophia-org/sophia`, commit
 `987cfd393a11edaa99e8b3c58be80d21167fb287` (signed t252 merge).
 The source tree was copied from `bindings/c/` into `src/`, preserving paths
@@ -470,39 +521,127 @@ The strict C suites, generator checks and all suites under clang ASan/UBSan
 pass. Production integration and device throughput are separate Sophia gates;
 this record makes no throughput claim.
 
-## Release candidate 0.10.0: borrowed Twrite for lock uploads
+## t317 profile checkpoint
 
-All contract copies remain byte-identical to 0.9.0. The generic 9P client adds
-`sophia_9p_write_borrowed`: the request slot keeps only the 23-byte Twrite
-header, and the payload is sent from the caller's bytes with `sendmsg`,
-resuming a partial send across header and payload. The header names the
-borrow's release points: the request's reply, the reply to a successful
-flush of it, or a terminal wire failure or disposal of the client; a refused
-call borrows nothing, and no other error ends a borrow. `struct
-sophia_9p_slot` gains one pointer, so `struct sophia_9p_client`, which
-callers allocate, grows with it. Every source consumer of the generic
-client, not only the lock role, must rebuild with these headers; an old
-allocated layout must never be used with this library.
+Only the 9P profile copy and its digest change, alongside this provenance and
+the explicit coverage limit. The profile is Sophia's t317 candidate on base
+`e855fd75acd8ac38b7b779cc5377acd5d2c0c223`, not that base's profile. Sophia's
+subsequent immutable SDK pin binds the candidate trees. No C implementation
+or public API changes; Tauth and launch authentication remain unimplemented.
 
-The lock client's upload writes use it. Their bytes were already borrowed
-until every issued write settles, which outlasts sending them, so the lock
-API and its lifetime rule are unchanged; the copy into request storage is
-gone. Other roles keep copied writes.
+## t317 generic afid primitives
 
-`sophia_9p_client_test` sends a copied and a borrowed Twrite of the largest
-payload five bytes per service pass, so one pass spans header and payload,
-and requires identical wire bytes apart from the tag; it also checks the
-argument refusals. A mutant that sends the payload from the wrong offset
-fails that comparison. Further controls: a 64 KiB borrowed write against the
-smallest send buffer the kernel allows meets real EAGAIN and still sends the
-exact bytes; a borrowed write flushed while partly sent is sent whole before
-its Tflush and nothing is sent after Rflush; a peer that closes with bytes
-unsent ends the client with a stable terminal error that admits no new
-borrow; and a reply to a borrowed write still being sent fails the client.
-Those three free the caller's bytes at the release point, so a sanitizer
-build sees any later read in user space. They cannot see one inside the
-kernel: a mutant that keeps calling sendmsg after a terminal failure passes,
-because a dead socket copies nothing and puts nothing on the wire. The
-strict C suites pass, and all suites pass under clang ASan/UBSan. This
-removes a user-space copy of the payload, not the kernel's copy; this record
-makes no throughput claim.
+The subsequent C implementation uses the same pinned 9P profile: Tauth returns
+an afid with QTAUTH; attach-with-afid explicitly names that conversation while
+uname/aname remain claims and n_uname is NOUID. Ordinary attach delegates with
+NOFID and preserves existing behavior. Auth refusal and a winning flush return
+the reserved fid, while Rauth winning the race retains it until clunk.
+
+Scripted tests check literal request bodies, read access on the returned afid,
+root-only cleanup after an attach refusal, auth refusal, both flush orderings,
+QTAUTH exclusion from ordinary roots, malformed qid types and record lengths.
+Launch-channel authentication and role bootstrap are not implemented by these
+primitives. Production-export interoperability remains a separate Sophia gate.
+
+The strict C suite and the same suite under clang ASan/UBSan pass. Two controls
+are refused by the tests: accepting an ordinary qid as an auth qid, and leaking
+the Tauth fid on refusal. Sources are restored and the normal suite passes
+again. Local evidence `t317-sdk-c-afid-01` has self-excluding SHA256SUMS hash
+`e277c561ca483e52e07364aef71fb26dfbcd1d7c9845e00745340bedb202d362`;
+it records binary paths/hashes, not copied executables. This result paragraph
+follows the captured candidate; implementation and tests are unchanged.
+
+## Shared launch conversation and lock root handoff
+
+`spec/factotum-launch-authentication.md` is copied from signed Sophia
+`6937794595d0a7d266f52d5ede65c31f3e41bc51`. It supplies the fixed challenge/status
+records and private relay view used by `sophia_launch_auth.h`. The generic 9P
+library remains independent of these Sophia-specific records.
+
+The helper owns one pending request across two caller-owned clients, copies
+bounded claims, relays its own afid's challenge, and exposes the admitted root
+only after clunking its temporary afid and relay fids. It retains the launch
+channel itself. A fixed five-second total deadline and monotonic caller time
+bound retries and silent peers. EAGAIN at Tauth is paced without renewing the
+deadline; other refusals are terminal, with no ordinary-attach fallback.
+The lock client's admitted-root constructor resumes its existing bootstrap at
+`api` without Tversion or Tattach. Scripted tests cover successful handoff,
+malformed challenge/status, relay refusal, short write, retry, deadline,
+backwards time, cancellation, retained fid counts and busy/unknown root refusal.
+Initialization marks the supplied launch-channel fd CLOEXEC before I/O and
+fails if that operation fails. This is descriptor-flag evidence; it does not
+prevent deliberate forwarding or proxying by a cooperating capability holder.
+Production interoperability and normal Session startup remain separate gates.
+
+The strict C suite and clang ASan/UBSan suite pass on the formatted candidate.
+Controls discriminate accepting a refused relay/status, omitting the total
+deadline, failing to set CLOEXEC and re-attaching the already admitted root.
+All sources are restored, compared against the complete candidate inventory,
+and the normal suite passes again. `t317-sdk-launch-03` has self-excluding
+SHA256SUMS hash `dfeff9a787310c59ae5faa8eff5c7112cd9eb8e19104a675b5c8b8b74ca6319d`.
+Only this result paragraph follows the captured candidate; executables are
+recorded by path/hash, never copied to evidence.
+
+## Normal lock-provider admission contract
+
+`spec/sophia-lock-files.md` and `spec/factotum-launch-authentication.md` now
+come from signed Sophia `49eacf6462cfbe1eec8195ddeed5a1090c932447`. They describe
+normal provider startup through the protected launch channel, Factotum afid
+exchange, immutable identity and current custody. Record layouts and SDK code
+are unchanged. Sophia's provider join uses this SDK's existing launch helper
+and admitted-root lock constructor; physical/client rollout remains separate.
+
+## WM admitted-root handoff
+
+`spec/sophia-wm-files.md` now comes from signed Sophia
+`3e60e53077e4a6e7ff4b79d63b81a2b5b41c8896`, which requires authenticated attach
+for normal WM startup and replacement. Record layouts are unchanged.
+`sophia_ws_open_attached` exclusively borrows a quiescent admitted wire/root,
+checks capacity, fid ownership, pending/partial I/O and disjoint allocations,
+and starts at api without Tversion or Tattach. The existing fresh-fd constructor
+retains its behavior; an authenticated endpoint refuses its anonymous attach.
+
+The entire scripted WM session suite runs through both constructors. Scripted
+admission is supplied, not a Factotum verdict. The strict full C suite and
+clang ASan/UBSan suite pass. A reattach mutation fails at `WM handoff must not
+reattach its admitted wire`; omitting the initial drive fails at `WM bootstrap
+must schedule its first request without peer input`. Each control restores
+the captured source bytes, and the full normal suite passes again. Evidence
+records executable paths and hashes, never copied binaries.
+
+| Package | SHA256SUMS SHA-256 |
+| --- | --- |
+| `t317-wm-sdk-01` | `5f719e780b952163b15e6508b1747ba9156bc295ad599de1f5d0b56afc67363e` |
+| `t317-wm-sdk-reattach-control-01` | `347646d477574c9d5e800e6269e5577f9edbacdb713430aadbf62919a1d18962` |
+| `t317-wm-sdk-schedule-control-01` | `c465dacce28429aa2af1fd4397d63cce1d0b537e713fa201afee5b16a4770966` |
+| `t317-wm-sdk-restored-01` | `044f35d24f1d5a5e861e937771a623fae5faf0a54f926cff637c15fbcc22120e` |
+
+The contract copy/digest and this documentation follow the captured code
+candidate; no implementation or test bytes changed. Production WM-owner
+interoperability and deployed-client migration remain separate gates.
+
+## Shell admitted-root handoff
+
+The shell contract copy is from signed Sophia
+`3b1cf9b82f192d35c4c52d5d85a49ccba1125ad8`. Record layouts are unchanged.
+`sophia_ss_open_attached` and its external-staging form borrow the authenticated
+wire/root and schedule the api read without version or attach. The lower
+record client exposes `sophia_sf_client_init_attached`. Poll integration uses
+the borrowed connection. Legacy raw constructors retain their behavior.
+
+The strict full suite and clang ASan/UBSan suite pass. New scripted tests cover
+bar, launcher, dock and descriptor negotiation, inline/external staging, bar
+submission custody, wrong root, partial input and overlapping wire storage.
+Admission is supplied; successful production authentication remains a separate
+join. A reattach control fails at `shell handoff must not reattach its admitted
+wire`. Source is restored and the full normal suite passes again. The first
+control attempt is retained as STOP: a root diagnostic fired before the
+intended wire assertion; the diagnostic was moved after wire processing.
+
+| Package | SHA256SUMS SHA-256 |
+| --- | --- |
+| `t317-shell-sdk-handoff-dev02` | `c2b73714eb44ada432be8c950ff1114c084d3fb9451bd31d4e6ab54b27d36f7e` |
+| `t317-shell-sdk-handoff-restored01` | `bc1b1e71b5aaeeaceb403d225b0ce4a359b01489fe94b7972023c49f5c7e30bb` |
+
+Evidence records binary paths and hashes, not copies. This provenance addition
+follows the captured candidate; no implementation or test bytes changed.

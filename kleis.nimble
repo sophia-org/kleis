@@ -51,6 +51,7 @@ task installBin, "Install the kleis binary to ~/.local/bin (builds if needed)":
   installConfigStep()
 
 task test, "Run unit tests":
+  exec "sh scripts/check-launch-auth.sh"
   exec "nim c -r --path:src tests/test_cli.nim"
   exec "nim c -r --path:src tests/test_config.nim"
   exec "nim c -r --path:src tests/test_matrix.nim"

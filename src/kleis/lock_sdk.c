@@ -1,8 +1,10 @@
 #include "lock_sdk.h"
+#include "lock_auth.h"
 #include "sophia_lock_client.h"
 #include <poll.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define KLEIS_MSIZE 65536u
 #define KLEIS_REQUESTS 16u
@@ -12,6 +14,7 @@ struct kleis_lock {
   struct sophia_9p_client wire;
   struct sophia_lc_client client;
   void *storage;
+  int relay_fd;
 };
 
 kleis_lock *kleis_lock_open(int fd, uint16_t chord_count,
@@ -20,11 +23,14 @@ kleis_lock *kleis_lock_open(int fd, uint16_t chord_count,
   size_t bytes = sophia_9p_storage_bytes(KLEIS_MSIZE, KLEIS_REQUESTS);
   kleis_lock *lock;
   uint16_t i;
+  uint32_t root;
+  int authenticated;
   if (chord_count > SOPHIA_LF_MAX_CHORDS)
     return NULL;
   lock = calloc(1, sizeof(*lock));
   if (!lock)
     return NULL;
+  lock->relay_fd = -1;
   lock->storage = malloc(bytes);
   memset(&offer, 0, sizeof(offer));
   offer.minimum_revision = offer.maximum_revision = SOPHIA_LF_REVISION;
@@ -38,8 +44,14 @@ kleis_lock *kleis_lock_open(int fd, uint16_t chord_count,
   }
   if (!lock->storage ||
       sophia_9p_init(&lock->wire, fd, KLEIS_MSIZE, KLEIS_REQUESTS, KLEIS_FIDS,
-                     lock->storage, bytes) ||
-      sophia_lc_init(&lock->client, &lock->wire, &offer) ||
+                     lock->storage, bytes)) {
+    kleis_lock_free(lock);
+    return NULL;
+  }
+  authenticated = kleis_lock_authenticate(&lock->wire, &lock->relay_fd, &root);
+  if (authenticated < 0 ||
+      (authenticated ? sophia_lc_init_attached(&lock->client, &lock->wire, root, &offer)
+                     : sophia_lc_init(&lock->client, &lock->wire, &offer)) ||
       sophia_lc_upload_window(&lock->client, 8)) {
     kleis_lock_free(lock);
     return NULL;
@@ -49,6 +61,8 @@ kleis_lock *kleis_lock_open(int fd, uint16_t chord_count,
 void kleis_lock_free(kleis_lock *lock) {
   if (!lock)
     return;
+  if (lock->relay_fd >= 0)
+    close(lock->relay_fd);
   free(lock->storage);
   free(lock);
 }

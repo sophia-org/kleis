@@ -1,18 +1,14 @@
-tree 48af6bf0c1eadbf982c2043ab0466bdb8b3000a1
-parent 6259041b736ce148d9ab86d2dca4d4b3ae68c626
-author Mason Green <mason@greenm01.net> 1791158633 -0400
-committer Mason Green <mason@greenm01.net> 1791158640 -0400
+tree 7eaa34ba662269de3e58721c133d19a5c7f8b8c0
+parent 73fe8106da63e1586ab5a900401fb051bb625464
+author Mason Green <mason@greenm01.net> 1791782140 -0400
+committer Mason Green <mason@greenm01.net> 1791782140 -0400
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- iJAEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasLpcBsUgAAAAAAEAA5t
- YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGL92wD+Lraj+fsEAby04mMEJMWk
- 460XrNVEw+AAE11y2Pk+8UkA92r8rW2xudrfwPWzYS9HMyhUBB/inOPPxp4Kr/N2
- kQg=
- =GOyc
+ iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCasxs/BsUgAAAAAAEAA5t
+ YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGK4IQEAqG6Zbv9ruQp9N1cNRcKj
+ ILs/vuOvIDRjewTlSDWVVxgBAOl/4icxYkhvhd+MUM6tJoa0GU2JDokeu+k+l+b9
+ L1ML
+ =ZdDD
  -----END PGP SIGNATURE-----
 
-Release candidate C SDK 0.10.0: borrowed lock upload writes
-
-compatibility.json and the pkg-config version name 0.10.0, as PROVENANCE
-records it: the 0.9.0 lock upload pipelining plus borrowed Twrites. No
-code changes; every consumer of the generic client rebuilds.
+Align t317 authentication contract snapshots

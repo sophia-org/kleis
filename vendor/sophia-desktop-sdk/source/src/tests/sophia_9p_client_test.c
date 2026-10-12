@@ -20,7 +20,8 @@ static void put(uint8_t *p, uint64_t v, size_t n)
 }
 static unsigned get16(const uint8_t *p) { return p[0] + 256u * p[1]; }
 static unsigned get32(const uint8_t *p) { return get16(p) + 65536u * get16(p + 2); }
-static uint16_t request(struct fixture *f, unsigned type)
+static uint16_t request_matches(struct fixture *f, unsigned type,
+                                const void *expected, size_t expected_bytes)
 {
     uint8_t b[65536];
     size_t n, at = 0;
@@ -45,7 +46,15 @@ static uint16_t request(struct fixture *f, unsigned type)
         at += (size_t)r;
     }
     assert(b[4] == type);
+    if (expected) {
+        assert(n == expected_bytes + 7);
+        assert(!memcmp(b + 7, expected, expected_bytes));
+    }
     return (uint16_t)get16(b + 5);
+}
+static uint16_t request(struct fixture *f, unsigned type)
+{
+    return request_matches(f, type, NULL, 0);
 }
 static void answer(struct fixture *f, unsigned type, uint16_t tag, const void *body, size_t n)
 {
@@ -312,192 +321,87 @@ static void reply_shape_poisoning(void)
         finish(&f);
     }
 }
-/* One Twrite of the largest payload, sent five bytes per service pass so that
- * one pass spans the header and the payload. Returns the bytes on the wire. */
-static size_t sent_in_steps(struct fixture *f, int borrow, const uint8_t *data, size_t count,
-                            uint8_t *wire, size_t room)
+static void authenticated_attach_and_afid_custody(void)
 {
-    struct sophia_9p_handle h;
-    uint8_t ok[4] = {0};
-    size_t at = 0, steps = 0;
-    ssize_t r;
-    if (borrow)
-        assert(!sophia_9p_write_borrowed(&f->c, 1, 9, data, count, &h));
-    else
-        assert(!sophia_9p_write(&f->c, 1, 9, data, count, &h));
-    while (at < 23 + count) {
-        assert(!sophia_9p_service(&f->c, 5));
-        r = recv(f->fd[1], wire + at, room - at, MSG_DONTWAIT);
-        assert(r > 0 && r <= 5);
-        at += (size_t)r;
-        steps++;
-    }
-    assert(steps == (23 + count + 4) / 5);
-    put(ok, count, 4);
-    answer(f, 119, (uint16_t)get16(wire + 5), ok, 4);
-    assert(take(f, 119).count == count);
-    return at;
-}
-static void borrowed_write_sends_the_copied_bytes(void)
-{
-    static uint8_t data[4096 - 23], copied[4096], borrowed[4096];
     struct fixture f;
-    struct sophia_9p_handle h;
-    size_t i, n;
-    for (i = 0; i < sizeof(data); i++)
-        data[i] = (uint8_t)(i * 7 + 3);
-    init(&f, 2, 2);
-    n = sent_in_steps(&f, 0, data, sizeof(data), copied, sizeof(copied));
-    assert(n == 4096 && sent_in_steps(&f, 1, data, sizeof(data), borrowed, sizeof(borrowed)) == n);
-    /* Identical but for the tag. */
-    assert(!memcmp(copied, borrowed, 5) && !memcmp(copied + 7, borrowed + 7, n - 7));
-    assert(sophia_9p_write_borrowed(&f.c, 1, 0, data, sizeof(data) + 1, &h) ==
-           SOPHIA_9P_ARGUMENT);
-    assert(sophia_9p_write_borrowed(&f.c, 1, 0, NULL, 1, &h) == SOPHIA_9P_ARGUMENT);
-    finish(&f);
-}
-/* Versioned at `msize` with the client's send buffer as small as the kernel
- * allows, so a large request meets real backpressure. */
-static void init_small_send(struct fixture *f, uint32_t msize)
-{
-    struct sophia_9p_handle h;
-    uint8_t b[14];
-    int small = 1;
-    size_t n = sophia_9p_storage_bytes(msize, 2);
-    assert(!socketpair(AF_UNIX, SOCK_STREAM, 0, f->fd));
-    assert(!setsockopt(f->fd[0], SOL_SOCKET, SO_SNDBUF, &small, sizeof(small)));
-    f->memory = malloc(n);
-    assert(f->memory);
-    assert(!sophia_9p_init(&f->c, f->fd[0], msize, 2, 2, f->memory, n));
-    assert(!sophia_9p_version(&f->c, &h));
-    assert(request(f, 100) == UINT16_MAX);
-    put(b, msize, 4);
-    put(b + 4, 8, 2);
-    memcpy(b + 6, "9P2000.L", 8);
-    answer(f, 101, UINT16_MAX, b, 14);
-    take(f, 101);
-}
-static uint8_t *pattern(size_t n)
-{
-    uint8_t *p = malloc(n);
-    size_t i;
-    assert(p);
-    for (i = 0; i < n; i++)
-        p[i] = (uint8_t)(i * 13 + 5);
-    return p;
-}
-/* Bytes the peer can read now, appended at `at`. */
-static size_t drain(struct fixture *f, uint8_t *wire, size_t at, size_t room)
-{
-    ssize_t r;
-    while ((r = recv(f->fd[1], wire + at, room - at, MSG_DONTWAIT)) > 0)
-        at += (size_t)r;
-    return at;
-}
-/* A borrowed request larger than the send buffer stops at EAGAIN partway and
- * resumes as the peer reads, sending exactly the copied request's bytes. */
-static void borrowed_write_survives_backpressure(void)
-{
-    enum { MSIZE = 65536, COUNT = MSIZE - 23 };
-    static uint8_t wire[MSIZE];
-    struct fixture f;
-    struct sophia_9p_handle h;
-    uint8_t *data = pattern(COUNT), ok[4];
-    size_t at = 0, stalls = 0, i;
-    init_small_send(&f, MSIZE);
-    assert(!sophia_9p_write_borrowed(&f.c, 1, 0, data, COUNT, &h));
-    while (at < MSIZE) {
-        assert(!sophia_9p_service(&f.c, MSIZE));
-        if (sophia_9p_wants_write(&f.c))
-            stalls++;
-        at = drain(&f, wire, at, sizeof(wire));
-    }
-    assert(stalls > 0);
-    assert(get32(wire) == MSIZE && wire[4] == 118 && get32(wire + 19) == COUNT);
-    for (i = 0; i < COUNT; i++)
-        assert(wire[23 + i] == data[i]);
-    put(ok, COUNT, 4);
-    answer(&f, 119, (uint16_t)get16(wire + 5), ok, 4);
-    assert(take(&f, 119).count == COUNT);
-    free(data);
-    finish(&f);
-}
-/* Flushed while partly sent: the request is still sent whole before its
- * Tflush, and after Rflush its bytes are never read again (freed here, so a
- * sanitizer build sees any later read). */
-static void flush_of_a_partly_sent_borrowed_write(void)
-{
-    static uint8_t wire[8192];
-    struct fixture f;
-    struct sophia_9p_handle h, fh;
+    struct sophia_9p_handle h, fl;
     struct sophia_9p_reply r;
-    uint8_t *data = pattern(4096 - 23);
-    size_t at;
+    uint32_t afid, root;
+    uint16_t tag, ft;
+    uint8_t auth_body[14] = {0,0,0,0, 1,0,'u', 1,0,'a', 255,255,255,255};
+    uint8_t attach_body[18] = {0,0,0,0, 0,0,0,0, 1,0,'u', 1,0,'a', 255,255,255,255};
+    uint8_t q[13] = {0x08}, denied[4] = {13}, empty[4] = {0};
     init(&f, 2, 2);
-    assert(!sophia_9p_write_borrowed(&f.c, 1, 0, data, 4096 - 23, &h));
-    assert(!sophia_9p_service(&f.c, 10));
-    at = drain(&f, wire, 0, sizeof(wire));
-    assert(at == 10);
-    assert(!sophia_9p_flush(&f.c, h, &fh));
-    while (at < 4096 + 9) {
-        assert(!sophia_9p_service(&f.c, 4096));
-        at = drain(&f, wire, at, sizeof(wire));
+    assert(!sophia_9p_auth(&f.c, "u", "a", &h, &afid));
+    put(auth_body, afid, 4);
+    tag = request_matches(&f, 102, auth_body, sizeof(auth_body));
+    q[1] = 9; q[5] = 77;
+    answer(&f, 103, tag, q, sizeof(q));
+    r = take(&f, 103);
+    assert(r.qid.type == 8 && r.qid.version == 9 && r.qid.path == 77);
+    assert(!sophia_9p_read(&f.c, afid, 0, 40, &h));
+    tag = request(&f, 116);
+    answer(&f, 117, tag, empty, sizeof(empty));
+    take(&f, 117);
+    assert(!sophia_9p_attach_with_afid(&f.c, afid, "u", "a", &h, &root));
+    put(attach_body, root, 4); put(attach_body + 4, afid, 4);
+    tag = request_matches(&f, 104, attach_body, sizeof(attach_body));
+    answer(&f, 7, tag, denied, sizeof(denied));
+    assert(take(&f, 7).error == 13);
+    assert(f.c.fid_count == 1); /* Refusal frees only the root reservation. */
+    assert(!sophia_9p_attach_with_afid(&f.c, afid, "u", "a", &h, &root));
+    tag = request(&f, 104);
+    q[0] = 0x80;
+    answer(&f, 105, tag, q, sizeof(q)); take(&f, 105);
+    assert(f.c.fid_count == 2);
+    finish(&f);
+
+    init(&f, 1, 1);
+    assert(!sophia_9p_auth(&f.c, "u", "a", &h, &afid));
+    tag = request(&f, 102);
+    answer(&f, 7, tag, denied, sizeof(denied)); take(&f, 7);
+    assert(!f.c.fid_count);
+    assert(!sophia_9p_auth(&f.c, "u", "a", &h, &afid));
+    request(&f, 102);
+    assert(!sophia_9p_flush(&f.c, h, &fl)); ft = request(&f, 108);
+    answer(&f, 109, ft, NULL, 0); take(&f, 109);
+    assert(!f.c.fid_count); /* Unanswered Tauth releases its reservation. */
+    assert(!sophia_9p_auth(&f.c, "u", "a", &h, &afid));
+    tag = request(&f, 102);
+    assert(!sophia_9p_flush(&f.c, h, &fl)); ft = request(&f, 108);
+    q[0] = 8;
+    answer(&f, 103, tag, q, sizeof(q)); take(&f, 103);
+    answer(&f, 109, ft, NULL, 0); take(&f, 109);
+    assert(f.c.fid_count == 1); /* Rauth winning the race retains the afid. */
+    assert(!sophia_9p_clunk(&f.c, afid, &h)); tag = request(&f, 120);
+    answer(&f, 121, tag, NULL, 0); take(&f, 121);
+    assert(!f.c.fid_count);
+    finish(&f);
+}
+static void authentication_qid_is_not_an_ordinary_file_qid(void)
+{
+    unsigned i;
+    const uint8_t bad[] = {0, 0x80, 0x88};
+    for (i = 0; i < 6; i++) {
+        struct fixture f;
+        struct sophia_9p_handle h;
+        uint32_t fid;
+        uint16_t tag;
+        uint8_t q[14] = {8};
+        init(&f, 1, 1);
+        if (i == 5) {
+            assert(!sophia_9p_attach(&f.c, "", "", &h, &fid));
+            tag = request(&f, 104);
+            answer(&f, 105, tag, q, 13); /* QTAUTH cannot be a root. */
+        } else {
+            assert(!sophia_9p_auth(&f.c, "", "", &h, &fid));
+            tag = request(&f, 102);
+            if (i < sizeof(bad)) q[0] = bad[i];
+            answer(&f, 103, tag, q, i == 3 ? 12 : i == 4 ? 14 : 13);
+        }
+        assert(sophia_9p_service(&f.c, 4096) == SOPHIA_9P_INVALID);
+        finish(&f);
     }
-    assert(at == 4096 + 9 && !memcmp(wire + 23, data, 4096 - 23));
-    assert(wire[4096 + 4] == 108 && get16(wire + 4096 + 7) == get16(wire + 5));
-    answer(&f, 109, (uint16_t)get16(wire + 4096 + 5), NULL, 0);
-    assert(!sophia_9p_service(&f.c, 4096));
-    assert(!sophia_9p_peek(&f.c, &r) && r.type == 109);
-    free(data);
-    assert(!sophia_9p_consume(&f.c, r.handle));
-    assert(!sophia_9p_service(&f.c, 4096));
-    assert(!sophia_9p_wants_write(&f.c));
-    finish(&f);
-}
-/* The peer goes away with the request partly sent: the terminal wire error
- * ends the borrow, and the client never touches the bytes again. */
-static void terminal_close_with_borrowed_bytes_unsent(void)
-{
-    struct fixture f;
-    struct sophia_9p_handle h;
-    uint8_t *data = pattern(4096 - 23);
-    int r;
-    init(&f, 2, 2);
-    assert(!sophia_9p_write_borrowed(&f.c, 1, 0, data, 4096 - 23, &h));
-    assert(!sophia_9p_service(&f.c, 10));
-    close(f.fd[1]);
-    r = sophia_9p_service(&f.c, 4096);
-    assert(r == SOPHIA_9P_IO || r == SOPHIA_9P_CLOSED);
-    free(data);
-    assert(sophia_9p_service(&f.c, 4096) == r);
-    assert(sophia_9p_write_borrowed(&f.c, 1, 0, "x", 1, &h) == r);
-    close(f.fd[0]);
-    free(f.memory);
-}
-/* A reply to a borrowed request still being sent is a protocol violation:
- * the connection fails and the borrow ends with it. */
-static void early_reply_to_a_queued_borrowed_write(void)
-{
-    enum { MSIZE = 65536, COUNT = MSIZE - 23 };
-    static uint8_t wire[MSIZE];
-    struct fixture f;
-    struct sophia_9p_handle h;
-    uint8_t *data = pattern(COUNT), ok[4] = {1, 0, 0, 0};
-    size_t at;
-    int r = 0;
-    init_small_send(&f, MSIZE);
-    assert(!sophia_9p_write_borrowed(&f.c, 1, 0, data, COUNT, &h));
-    assert(!sophia_9p_service(&f.c, MSIZE));
-    assert(sophia_9p_wants_write(&f.c));
-    at = drain(&f, wire, 0, 23);
-    assert(at >= 7);
-    answer(&f, 119, (uint16_t)get16(wire + 5), ok, 4);
-    while (!r)
-        r = sophia_9p_service(&f.c, MSIZE);
-    assert(r == SOPHIA_9P_INVALID);
-    free(data);
-    assert(sophia_9p_service(&f.c, MSIZE) == SOPHIA_9P_INVALID);
-    finish(&f);
 }
 int main(void)
 {
@@ -511,11 +415,9 @@ int main(void)
     preflight_and_errors();
     outstanding_read_fragmented_reply_and_eof();
     reply_shape_poisoning();
-    borrowed_write_sends_the_copied_bytes();
-    borrowed_write_survives_backpressure();
-    flush_of_a_partly_sent_borrowed_write();
-    terminal_close_with_borrowed_bytes_unsent();
-    early_reply_to_a_queued_borrowed_write();
+    authenticated_attach_and_afid_custody();
+    authentication_qid_is_not_an_ordinary_file_qid();
+    puts("Tauth/afid wire and custody controls passed");
     puts("sophia_9p_client: R4-1..R4-7 controls passed");
     return 0;
 }
