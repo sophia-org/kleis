@@ -267,6 +267,18 @@ suite "gpu worker handover":
     var held = w.next(3)
     let before = held.snapshot
     failNextGpuRender()
+    # A second GPU frame may already be ready when failure is armed. Release
+    # such frames so the worker has a free slot in which to hit the failure;
+    # holding both slots would prevent the transition this test waits for.
+    for _ in 0 ..< 300:
+      if w.backend == mbCpu:
+        break
+      let ready = w.acquire(3)
+      if ready.isSome:
+        var pending = ready.get
+        w.release(pending)
+      sleep(10)
+    check w.backend == mbCpu
     var after = w.next(3)
     check w.backend == mbCpu
     # The held frame is still mapped, intact, and its device open; the new
