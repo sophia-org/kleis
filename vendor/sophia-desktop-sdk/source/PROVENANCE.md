@@ -1,5 +1,36 @@
 # Extraction and contract provenance
 
+## Mapped ISB builder, 2026-10-18
+
+Adds in-place ISB construction to both SDKs: the Rust leaf crate `sophia-isb`
+(`MappedIsb`, re-exported with `create_mapped_isb` by `sophia-image-producer`)
+and C `sophia_ip_isb_create_bounded`, with the existing C create on the same
+hardened path. Existing APIs are unchanged in signature; the Rust `pwrite`
+builder remains. Source bases: Rust `fbde253ef297e282357080600a560f1824cd6b50`,
+C `14c8fce5d0d75d21b43ee6eb7a01232c0abd1399`. Published revisions are recorded
+by Sophia's import manifest and evidence.
+[API-PARITY.md](API-PARITY.md#mapped-isb-builder-2026-10-18) records the
+contract, ownership differences, tests and evidence limits.
+
+## Byte-upload API retirement, 2026-10-18
+
+This working series follows the accepted ISB-only amendment and removes the
+shell and lock byte writers, their public helpers, retry state and upload fids.
+Passive protocol values remain for conformance/refusal tests. Native launcher
+resources enter the lifecycle only through settled-image adoption. The Rust
+owning session now exposes its image adapter and adoption operations directly.
+
+Source bases: C `a1c41aa0217037b0578f6606f589ed9846ee9247`, Rust
+`9495fc426951bf168dcf827c67a231a5028e508c`; Sophia export qualification uses the
+ISB-only worktree based on `001265f6d8a4e49eccb959c451e77b28cf0d3205`.
+The paired Rust removal is signed and published as
+`fbde253ef297e282357080600a560f1824cd6b50`. The C r9 launcher/dock peer also
+passes sealed submission through the owning shell session against the shared
+production fixture (`isb-only-c-roles-01.log`). The API parity update records
+the changed operations and evidence limits.
+Older upload-window evidence below describes the retired implementation.
+
+
 ## Native ISB adoption, 2026-10-18
 
 The paired native-launcher adoption APIs consume a verified settled offer only
