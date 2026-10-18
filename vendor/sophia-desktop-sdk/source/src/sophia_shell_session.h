@@ -9,7 +9,8 @@
  * The library reads no clock: callers pass CLOCK_MONOTONIC milliseconds. */
 #define SOPHIA_SS_SLOTS 64u
 #define SOPHIA_SS_OUTCOMES 256u
-#define SOPHIA_SS_REQUESTS 8u
+/* Four upload writes plus journal, ACK, object, record and paired submit. */
+#define SOPHIA_SS_REQUESTS 9u
 #define SOPHIA_SS_FIDS 32u
 /* Default inline transaction capacity. Larger descriptor candidates require
  * explicit caller-owned staging through open_fd_staging. */
@@ -51,6 +52,8 @@ struct sophia_ss_config {
     size_t object_capacity;
 };
 struct sophia_ss_reservation {
+    const struct sophia_ss *owner;
+    uint64_t epoch;
     uint64_t serial;
     uint16_t slots;
     size_t bytes;
@@ -76,6 +79,7 @@ struct sophia_ss_hold {
     uint64_t sequence, before, generation, qid;
     uint8_t active;
 };
+struct sophia_ss_image;
 struct sophia_ss {
     struct sophia_9p_client wire;
     struct sophia_sf_client files;
@@ -86,11 +90,17 @@ struct sophia_ss {
     uint64_t next_ticket, flight_ticket, flight_id, last_consumed, acked_seen;
     uint64_t now_ms, retry_at, ack_clock, refused_denied, reservation;
     uint32_t retry_delay;
+    uint64_t upload_retry_at, upload_seen;
+    uint32_t upload_retry_delay;
+    uint8_t upload_waiting, upload_progress;
     uint8_t flight, waiting, progress, object_requested, refused, reserved;
     struct sophia_ss_entry entries[SOPHIA_SS_SLOTS];
     /* holds: announcements owed a fetch; seen: the last verified fetch. */
     struct sophia_ss_hold holds[7], seen[7];
     struct sophia_ss_ticket tickets[SOPHIA_SS_OUTCOMES];
+    /* Optional image adapter (sophia_shell_image.h); NULL keeps every path
+     * byte-identical. Set only by sophia_ss_image_attach. */
+    struct sophia_ss_image *image;
 };
 /* 9P request storage plus the encoded queue; 0 for invalid sizes. */
 size_t sophia_ss_storage_bytes(uint32_t msize, size_t queue_bytes);
@@ -109,8 +119,9 @@ int sophia_ss_open_fd(struct sophia_ss *, int fd, const struct sophia_ss_config 
 int sophia_ss_open_fd_staging(struct sophia_ss *, int fd, const struct sophia_ss_config *,
                               void *storage, size_t bytes, void *transaction, size_t capacity);
 /* Continue on an authenticated root without version/attach. wire must be live,
- * quiescent and retain only root, with >=REQUESTS slots, >=FIDS fids and the
- * configured msize. It and its storage must be disjoint from all session buffers
+ * quiescent and retain only root, with >=8 slots, >=FIDS fids and the
+ * configured msize. Eight slots limit uploads to three concurrent writes.
+ * It and its storage must be disjoint from all session buffers
  * and remain exclusive/alive until close. The caller owns the wire and fd.
  * Storage sizing is unchanged; the reserved internal wire area is unused. */
 int sophia_ss_open_attached(struct sophia_ss *, struct sophia_9p_client *, uint32_t root,
@@ -121,7 +132,7 @@ int sophia_ss_open_attached_staging(struct sophia_ss *, struct sophia_9p_client 
 int sophia_ss_poll_fd(const struct sophia_ss *);
 /* POLLIN while live, plus POLLOUT only while 9P output is queued; 0 when final. */
 short sophia_ss_poll_events(const struct sophia_ss *);
-/* -1, or milliseconds until a submit deferred by EAGAIN may be retried. It
+/* -1, or milliseconds until a submit or upload deferred by EAGAIN may be retried. It
  * reports nothing about health: see obligations. */
 int sophia_ss_timeout(const struct sophia_ss *, uint64_t now_ms);
 /* One service pass: bounded (at most byte_budget bytes and 32 syscalls each
@@ -131,6 +142,8 @@ int sophia_ss_timeout(const struct sophia_ss *, uint64_t now_ms);
  * the pass that saw the refusal: only after event consume or ack progress, or
  * once now_ms reaches its backoff deadline (4 ms doubling to 256 ms). now_ms
  * must not decrease: a smaller value is ARGUMENT and changes nothing.
+ * Upload backpressure uses an independent deadline with the same policy,
+ * after the outstanding tail drains, resuming at the confirmed cursor.
  * Deadlines saturate at UINT64_MAX. Returns 0 while live, else a negative
  * sophia_9p_result; see state. */
 int sophia_ss_dispatch(struct sophia_ss *, short revents, size_t byte_budget, uint64_t now_ms);
@@ -157,7 +170,9 @@ size_t sophia_ss_record_bytes(const struct sophia_sf_record *);
 int sophia_ss_submit(struct sophia_ss *, const struct sophia_sf_record *records, size_t count,
                      uint64_t *first_ticket);
 /* Reserve room before an irreversible local step (for example a UI edit
- * whose acknowledgement must follow). One reservation at a time; BUSY
+ * whose acknowledgement must follow). Tokens belong to this session address
+ * and connection epoch; do not move or reinitialize a session with a live
+ * reservation. One reservation at a time; BUSY
  * changes nothing. Reserved room is unavailable to submit until commit or
  * cancel, and hand-off only frees room. Commit cannot fail for capacity: it
  * admits all records or none, keeping the reservation on INVALID/ARGUMENT

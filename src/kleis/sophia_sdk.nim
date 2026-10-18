@@ -18,6 +18,16 @@ const sdkSource =
 {.compile: sdkSource / "lock_files/client.c".}
 {.compile: sdkSource / "lock_files/session.c".}
 {.compile: sdkSource / "lock_files/upload.c".}
+{.compile: sdkSource / "lock_files/revision.c".}
+{.compile: sdkSource / "lock_files/image.c".}
+{.compile: sdkSource / "lock_files/image_adapter.c".}
+{.compile: sdkSource / "image_channel/discovery.c".}
+{.compile: sdkSource / "image_channel/packet.c".}
+{.compile: sdkSource / "image_channel/records.c".}
+{.compile: sdkSource / "image_producer/producer.c".}
+{.compile: sdkSource / "image_producer/offers.c".}
+{.compile: sdkSource / "image_producer/io.c".}
+{.compile: sdkSource / "image_producer/isb.c".}
 {.compile: "lock_sdk.c".}
 {.compile: "lock_auth.c".}
 
@@ -80,7 +90,11 @@ type
     pixel_width*, pixel_height*: uint32
 
 proc lockOpen*(
-  fd: cint, chordCount: uint16, keysyms: ptr uint32, modifiers: ptr uint16
+  fd: cint,
+  endpointDir: cstring,
+  chordCount: uint16,
+  keysyms: ptr uint32,
+  modifiers: ptr uint16,
 ): ptr LockHandle {.importc: "kleis_lock_open".}
 
 proc lockFree*(h: ptr LockHandle) {.importc: "kleis_lock_free".}
@@ -129,23 +143,56 @@ proc lockSubmission*(
 ): cint {.importc: "kleis_lock_submission".}
 
 proc lockSubmitRetry*(h: ptr LockHandle): cint {.importc: "kleis_lock_submit_retry".}
-proc lockUploadBegin*(
-  h: ptr LockHandle,
-  transaction, resourceId, resourceGeneration: uint64,
-  width, height: uint32,
-  slot: uint16,
-): cint {.importc: "kleis_lock_upload_begin".}
 
-proc lockUploadChunk*(
-  h: ptr LockHandle, bytes: pointer, count: csize_t
-): cint {.importc: "kleis_lock_upload_chunk".}
+# Sealed image channel states returned by lockImageChannel.
+const
+  ImageChannelPending* = 0.cint
+  ImageChannelReady* = 1.cint
+  ImageChannelClosed* = 2.cint
+  # Producer offer states (sophia_ip_offer_state).
+  OfferFree* = 0'u32
+  OfferBegun* = 1'u32
+  OfferRefused* = 2'u32
+  OfferAdmitted* = 3'u32
+  OfferSent* = 4'u32
+  OfferAmbiguous* = 5'u32
+  OfferExpired* = 6'u32
+  OfferSettled* = 7'u32
+  OfferUnknown* = 8'u32
 
-proc lockUploadReady*(h: ptr LockHandle): cint {.importc: "kleis_lock_upload_ready".}
-proc lockUploadPending*(
+proc lockImageChannel*(h: ptr LockHandle): cint {.importc: "kleis_lock_image_channel".}
+proc lockImagePollFd*(h: ptr LockHandle): cint {.importc: "kleis_lock_image_poll_fd".}
+
+proc lockImagePollEvents*(
   h: ptr LockHandle
-): cint {.importc: "kleis_lock_upload_pending".}
+): cshort {.importc: "kleis_lock_image_poll_events".}
 
-proc lockUploadEnd*(h: ptr LockHandle): cint {.importc: "kleis_lock_upload_end".}
-proc lockUploadCancel*(h: ptr LockHandle): cint {.importc: "kleis_lock_upload_cancel".}
+proc lockImageTimeout*(
+  h: ptr LockHandle, nowMs: uint64
+): int64 {.importc: "kleis_lock_image_timeout".}
+
+proc lockImageDispatch*(
+  h: ptr LockHandle, revents: cshort, nowMs: uint64
+): cint {.importc: "kleis_lock_image_dispatch".}
+
+proc lockImageBegin*(
+  h: ptr LockHandle,
+  nowMs, resourceId, resourceGeneration, output, allocation, view: uint64,
+  pixels: pointer,
+  width, height: uint32,
+  offer: var uint64,
+): cint {.importc: "kleis_lock_image_begin".}
+
+proc lockImageOffer*(
+  h: ptr LockHandle, offer: uint64, state, status, disposition: var uint32
+): cint {.importc: "kleis_lock_image_offer".}
+
+proc lockImageForget*(
+  h: ptr LockHandle, offer: uint64
+): cint {.importc: "kleis_lock_image_forget".}
+
+proc lockImageCancel*(
+  h: ptr LockHandle, offer, nowMs: uint64
+): cint {.importc: "kleis_lock_image_cancel".}
 
 {.pop.}

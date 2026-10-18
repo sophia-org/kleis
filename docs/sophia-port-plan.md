@@ -166,3 +166,32 @@ Sophia holds no secret.
 - Exact pixel format, stride and cursor/damage rules (t294 byte layouts).
 - Lock budget limits per output, which cap the largest buffer kleis can hold.
 - Whether config reload is needed while locked (proposal: read once at start).
+
+## Immutable Shared Buffers — October 18, 2026
+
+The provider now requires lock r2 and the sealed-image grant, using C SDK
+`a1c41aa0217037b0578f6606f589ed9846ee9247`. Discovery and image events run
+through the existing authenticated lock connection; the SEQPACKET descriptor
+is polled beside the role socket and worker. Rendering and GPU readback stay
+with the worker. The provider copies a finished frame into a sealed memfd,
+keeps that source across Busy for the same view and grant, and releases the
+worker lease. Image admission uses the lock epoch and topology, not the role
+connection epoch.
+
+Accepted alone cannot make a resource presentable. The producer must report
+Settled with Accepted and Retained before frame demand. Cancel may lose to
+acceptance; settlement still determines retirement. Channel loss, transfer
+expiry or unknown custody fails the connection without local settlement or
+byte fallback. Disposal closes the producer and retained unsent source.
+
+The device-hidden full `nimble --offline test` passes, including real provider
+controls for ImageBegin EAGAIN retry, ResourceCancel EAGAIN retry after output
+removal, and Accepted waiting for SourceReleased. Their private peer verifies
+actual sealed descriptors, exact 4x2 geometry and premultiplied pixels, and
+refuses byte Begin/End. Rendering tests include software GPU execution; the
+opt-in physical render-node test remains skipped. Release build, strict C
+syntax checks, Nim formatting and exact SDK manifest checks pass. Evidence is
+under `~/.local/state/sophia/development-evidence/isb-client-migration-20261018/`
+(`kleis-test-cli-08.log`, `kleis-build-cli-09.log`, `kleis-fmt-check-02.log`).
+These supplied-peer tests do not establish physical lock acceptance. No
+installed binary, configuration or live lock was changed.

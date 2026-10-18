@@ -18,6 +18,9 @@ const
   SubmissionStaged = 1'u32
   SubmissionCustodied = 3'u32
   RetryAfterMs = 8'i64
+  ProducerAccepted = 1'u32
+  ProducerRejected = 2'u32
+  ProducerCancelled = 3'u32
 
 proc nowMs(): int64 =
   getMonoTime().ticks div 1_000_000
@@ -31,9 +34,14 @@ type Provider = object
   lockGeneration: uint64
   lockDrawn: uint64 ## the lock epoch ui last started for
   pending: Action ## the record the SDK holds, until custody or refusal
-  chunkGiven: bool
-  ## A worker slot is borrowed until the SDK has drained all issued writes,
-  ## including cancel/rejection. Topology and view changes cannot free it.
+  ## The live sealed image offer, its resource, and the readiness the
+  ## last poll saw on the producer socket.
+  imageOffer: uint64
+  imageResource: uint64
+  imageRevents: cshort
+  ## A worker slot is borrowed until its pixels are copied into the
+  ## sealed source (or the begin is refused). Topology and view changes
+  ## cannot free it before then.
   lease: FrameLease
   cancelRequested: bool
   lastRetryAt: int64
@@ -99,15 +107,18 @@ proc drainEvents(p: var Provider): bool =
     of KindObjectPublished:
       p.readLock()
     of KindResourceStatus:
-      # Only a rejection can block an output; ordinary statuses skip the check.
-      if e.status == ResourceRejected:
+      # An image offer's Accepted is only custody progress: the
+      # presenter hears status 2 from the producer once the source is
+      # released (Settled, disposition 1). A rejection still blocks.
+      if p.imageOffer != 0 and e.resource_id == p.imageResource and
+          e.status == ResourceAccepted:
+        discard
+      elif e.status == ResourceRejected:
         let blocked = p.presenter.blockedFlags()
         p.presenter.uploadStatus(e.resource_id, e.status)
         p.reportBlocked(blocked, "a rejected upload")
       else:
         p.presenter.uploadStatus(e.resource_id, e.status)
-      if e.status != ResourceAdmitted:
-        p.chunkGiven = false
     of KindCandidateOutcome:
       p.presenter.outcome(e.allocation, e.candidate_generation, e.status)
     of KindFramePermit:
@@ -127,7 +138,7 @@ proc drainEvents(p: var Provider): bool =
       fail("the lock connection failed")
 
 proc settlePending(p: var Provider): bool =
-  ## Retry SDK-owned End and Cancel too: they have no Presenter action.
+  ## Retry image and cancellation submissions as well as presenter records.
   var stage, error: uint32
   discard p.handle.lockSubmission(stage, error)
   if stage == SubmissionStaged and nowMs() - p.lastRetryAt >= RetryAfterMs:
@@ -147,37 +158,57 @@ proc settlePending(p: var Provider): bool =
     result = true
 
 proc driveUpload(p: var Provider): bool =
-  let owner = p.presenter.uploadOwner()
-  if p.handle.lockUploadPending() == 0:
-    if owner >= 0 and p.pending.kind == akNone:
-      let blocked = p.presenter.blockedFlags()
-      p.presenter.uploadStatus(p.presenter.outputs[owner].uploading, ResourceRejected)
-      p.reportBlocked(blocked, "an upload that ended without a status")
-    result = not p.lease.pixels.isNil or p.presenter.cancelUpload
-    p.worker.release(p.lease)
-    p.presenter.uploadEnded()
-    p.chunkGiven = false
-    p.cancelRequested = false
+  ## Settle the live sealed offer. The presenter hears Accepted only
+  ## once the producer reports Settled with disposition 1 (Retained);
+  ## a cancelled offer settles with disposition 4. Nothing here ever
+  ## retries a byte upload: there is none.
+  if p.imageOffer == 0:
+    if p.presenter.cancelUpload:
+      p.presenter.uploadEnded()
+      p.cancelRequested = false
+      result = true
     return
-  if p.pending.kind != akNone:
-    return
-  if owner < 0 or p.presenter.cancelUpload:
-    if not p.cancelRequested and p.handle.lockUploadCancel() == 0:
+  if p.presenter.cancelUpload and not p.cancelRequested:
+    if p.handle.lockImageCancel(p.imageOffer, uint64(nowMs())) == 0:
       p.cancelRequested = true
       result = true
-    return
-  if p.handle.lockUploadReady() == 0:
-    return
-  if not p.chunkGiven:
-    if p.lease.pixels.isNil:
-      fail("an upload lost its frame lease")
-    if p.handle.lockUploadChunk(
-      p.lease.pixels, csize_t(p.lease.width * p.lease.height * 4)
-    ) == 0:
-      p.chunkGiven = true
-      result = true
+    # Accepted may already have won the race; still inspect settlement.
+  var state, status, disposition: uint32
+  if p.handle.lockImageOffer(p.imageOffer, state, status, disposition) != 0:
+    fail("the image offer vanished before settlement")
+  case state
+  of OfferSettled:
+    let resource = p.imageResource
+    if p.handle.lockImageForget(p.imageOffer) != 0:
+      fail("a settled image offer could not be forgotten")
+    p.imageOffer = 0
+    p.imageResource = 0
+    p.cancelRequested = false
+    if status == ProducerCancelled and disposition == 4:
+      p.presenter.uploadStatus(resource, ResourceCancelled)
+    elif status == ProducerAccepted and disposition == 1:
+      p.presenter.uploadStatus(resource, ResourceAccepted)
+    elif status == ProducerRejected and disposition == 3:
+      let blocked = p.presenter.blockedFlags()
+      p.presenter.uploadStatus(resource, ResourceRejected)
+      p.reportBlocked(blocked, "a rejected image")
+    else:
+      fail("the image settled without Accepted and Settled disposition 1")
+    result = true
+  of OfferAmbiguous, OfferExpired, OfferUnknown:
+    fail("the image transfer ended without settlement")
+  of OfferRefused:
+    let resource = p.imageResource
+    discard p.handle.lockImageForget(p.imageOffer)
+    p.imageOffer = 0
+    p.imageResource = 0
+    p.cancelRequested = false
+    let blocked = p.presenter.blockedFlags()
+    p.presenter.uploadStatus(resource, ResourceRejected)
+    p.reportBlocked(blocked, "an image offer that ended before settlement")
+    result = true
   else:
-    result = p.handle.lockUploadEnd() == 0
+    discard
 
 proc act(p: var Provider): bool =
   if p.pending.kind != akNone:
@@ -204,7 +235,16 @@ proc act(p: var Provider): bool =
     )
   of akUpload:
     let o = p.presenter.outputs[a.index].alloc
-    if p.handle.lockUploadPending() != 0:
+    if p.imageOffer != 0:
+      return
+    # No image moves before ChannelReady; a closed channel is a
+    # startup/session failure, never a byte-upload fallback.
+    case p.handle.lockImageChannel()
+    of ImageChannelClosed:
+      fail("the sealed image channel is unavailable")
+    of ImageChannelReady:
+      discard
+    else:
       return
     let frame = p.worker.acquire(o.allocation)
     if frame.isNone:
@@ -217,11 +257,25 @@ proc act(p: var Provider): bool =
       return true
     a.viewGeneration = p.lease.viewGeneration
     a.animation = p.ui.view.kind == vkMatrix
-    p.chunkGiven = false
-    r = p.handle.lockUploadBegin(
-      a.transaction, a.resource, 1, uint32(o.width), uint32(o.height), 0
+    var offer: uint64
+    r = p.handle.lockImageBegin(
+      uint64(nowMs()),
+      a.resource,
+      1,
+      o.output,
+      o.allocation,
+      a.viewGeneration,
+      p.lease.pixels,
+      uint32(o.width),
+      uint32(o.height),
+      offer,
     )
-    if r != 0:
+    if r == 0:
+      # The sealed source now owns a copy of the frame.
+      p.imageOffer = offer
+      p.imageResource = a.resource
+      p.worker.release(p.lease)
+    else:
       p.worker.release(p.lease, retry = r == SdkBusy)
 
   if r == 0:
@@ -239,6 +293,9 @@ proc timeout(p: Provider, now: int64): cint =
   discard p.handle.lockSubmission(stage, error)
   if stage == SubmissionStaged:
     deadline = min(deadline, p.lastRetryAt + RetryAfterMs)
+  let imageDue = p.handle.lockImageTimeout(uint64(now))
+  if imageDue >= 0:
+    deadline = min(deadline, now + imageDue)
   if deadline == high(int64):
     -1.cint
   else:
@@ -259,7 +316,9 @@ proc runProvider*(opts: var Options) =
   var keysyms = [AltB]
   var modifiers = [ModAlt]
   var p = Provider(opts: opts, presenter: initPresenter())
-  p.handle = lockOpen(cint(fd), 1, addr keysyms[0], addr modifiers[0])
+  let endpointDir = socketPath.parentDir
+  p.handle =
+    lockOpen(cint(fd), endpointDir.cstring, 1, addr keysyms[0], addr modifiers[0])
   if p.handle.isNil:
     fail("the lock client could not start")
   p.ui = initUi(opts, nowMs())
@@ -280,6 +339,9 @@ proc runProvider*(opts: var Options) =
         fail("Sophia ended this lock connection")
       else:
         fail("the lock connection failed (error " & $p.handle.lockRemoteError() & ")")
+    if p.handle.lockImageDispatch(p.imageRevents, uint64(nowMs())) != 0:
+      fail("the sealed image channel failed")
+    p.imageRevents = 0
     var progressed = p.drainEvents()
     let now = nowMs()
     let before = p.ui.view
@@ -297,11 +359,22 @@ proc runProvider*(opts: var Options) =
     # decode events in a second service call and then sleep with them held.
     if progressed:
       continue
+    let imageFd = p.handle.lockImagePollFd()
     var fds = [
       TPollfd(fd: cint(fd), events: p.handle.lockPollEvents()),
       TPollfd(fd: p.worker.readyFd(), events: POLLIN),
+      TPollfd(
+        fd: imageFd,
+        events:
+          if imageFd >= 0:
+            p.handle.lockImagePollEvents()
+          else:
+            0'i16,
+      ),
     ]
-    discard poll(addr fds[0], 2, p.timeout(nowMs()))
+    discard poll(addr fds[0], 3, p.timeout(nowMs()))
     if (fds[1].revents and POLLIN) != 0:
       p.worker.clearReady()
       p.presenter.markDirty()
+    if imageFd >= 0:
+      p.imageRevents = fds[2].revents

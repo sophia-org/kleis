@@ -1,8 +1,6 @@
-## The real provider loop against the C SDK's scripted lock-file peer. Sophia
-## may answer any submission with EAGAIN when its inbound queue is full; the
-## provider must retry it whoever submitted it. Here End and Cancel, which the
-## upload path submits itself, each get EAGAIN once. The view is blank and the
-## GPU unused, so no animation or other event can unstick a stalled provider.
+## Real provider with supplied lock decisions over private 9P and SEQPACKET.
+## ImageBegin and ResourceCancel each receive EAGAIN once. The peer checks
+## sealed descriptors and forbids frame demand before source settlement.
 
 import std/[os, posix, times, unittest]
 
@@ -17,7 +15,7 @@ const sdkSource =
 
 type Peer = pointer
 
-proc peerNew(fd: cint): Peer {.importc: "kleis_peer_new".}
+proc peerNew(fd: cint, directory: cstring): Peer {.importc: "kleis_peer_new".}
 proc peerFree(k: Peer) {.importc: "kleis_peer_free".}
 proc peerLock(
   k: Peer, lockEpoch: uint64, outputs: uint16
@@ -30,11 +28,9 @@ proc peerArmAgain(
 proc peerHoldUploads(k: Peer, hold: cint) {.importc: "kleis_peer_hold_uploads".}
 proc peerReleaseUploads(k: Peer) {.importc: "kleis_peer_release_uploads".}
 proc peerPump(k: Peer) {.importc: "kleis_peer_pump".}
-proc endSubmits(k: Peer): cuint {.importc: "kleis_peer_end_submits".}
 proc cancelSubmits(k: Peer): cuint {.importc: "kleis_peer_cancel_submits".}
 proc beginSubmits(k: Peer): cuint {.importc: "kleis_peer_begin_submits".}
 proc demandSubmits(k: Peer): cuint {.importc: "kleis_peer_demand_submits".}
-proc uploadEnds(k: Peer): cuint {.importc: "kleis_peer_upload_ends".}
 proc heldUploads(k: Peer): cuint {.importc: "kleis_peer_held_uploads".}
 proc negotiated(k: Peer): cint {.importc: "kleis_peer_negotiated".}
 proc uploadOpen(k: Peer): cint {.importc: "kleis_peer_upload_open".}
@@ -47,8 +43,8 @@ proc providerMain() {.thread.} =
     opts.noGpu = true
     try:
       runProvider(opts)
-    except CatchableError:
-      discard # the peer closed the connection: the test is over
+    except CatchableError as error:
+      stderr.writeLine("provider test exit: " & error.msg)
 
 type Session = object
   dir: string
@@ -78,7 +74,7 @@ proc start(name: string): Session =
   createThread(result.thread, providerMain)
   result.fd = cint(accept(result.listener, nil, nil))
   doAssert result.fd >= 0
-  result.peer = peerNew(result.fd)
+  result.peer = peerNew(result.fd, result.dir.cstring)
 
 proc serve(s: Session, ms: int, done: proc(): bool): bool =
   ## Answers the provider until `done` or the deadline.
@@ -99,7 +95,35 @@ proc finish(s: var Session) =
   removeDir(s.dir)
 
 suite "provider retries every staged submission":
-  test "an End answered EAGAIN once is retried and the upload completes":
+  test "Accepted waits for SourceReleased before demand":
+    var s = start("settlement")
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.negotiated() != 0,
+    )
+    s.peer.peerHoldUploads(2)
+    s.peer.peerLock(3, 1)
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.heldUploads() > 0,
+    )
+    discard s.serve(
+      100,
+      proc(): bool =
+        false,
+    )
+    check s.peer.demandSubmits() == 0
+    s.peer.peerReleaseUploads()
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.demandSubmits() > 0,
+    )
+    s.finish()
+
+  test "an ImageBegin answered EAGAIN once is retried and settles":
     var s = start("end")
     check s.serve(
       3000,
@@ -115,9 +139,7 @@ suite "provider retries every staged submission":
       proc(): bool =
         s.peer.demandSubmits() > 0,
     )
-    check s.peer.beginSubmits() == 1
-    check s.peer.endSubmits() == 2
-    check s.peer.uploadEnds() == 1
+    check s.peer.beginSubmits() == 2
     check recovered
     s.finish()
 
@@ -136,15 +158,13 @@ suite "provider retries every staged submission":
       proc(): bool =
         s.peer.heldUploads() > 0,
     )
-    # The output goes away mid-upload: the provider cancels. The held write
-    # drains first, then Cancel meets EAGAIN once.
+    # The output goes away while the peer holds source settlement.
     s.peer.peerLock(1, 0)
     check s.serve(
       3000,
       proc(): bool =
         s.peer.caughtUp() != 0,
     )
-    s.peer.peerReleaseUploads()
     let cancelled = s.serve(
       3000,
       proc(): bool =
@@ -152,6 +172,7 @@ suite "provider retries every staged submission":
     )
     check s.peer.cancelSubmits() == 2
     check cancelled
+    s.peer.peerReleaseUploads()
     # Once settled, a new output uploads: the SDK is free again.
     check s.serve(
       3000,
@@ -164,5 +185,4 @@ suite "provider retries every staged submission":
       proc(): bool =
         s.peer.beginSubmits() == 2,
     )
-    check s.peer.endSubmits() == 0
     s.finish()

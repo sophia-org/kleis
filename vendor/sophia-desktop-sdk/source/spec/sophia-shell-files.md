@@ -15,6 +15,28 @@ contract in the [control bus](sophia-9p-control-bus.md).
 
 ## Current owners, versions and grants
 
+### Request ordering on a shell connection
+
+The shell export executes synchronous requests in wire order on each
+connection. A client may queue a fresh `Twalk` followed by `Tlopen` for the
+new fid without waiting between them. This is a shell-profile guarantee,
+not an assumption about arbitrary 9P servers. Pending journal reads do not
+block later requests, and clients must match replies by tag rather than
+assume reply order.
+
+A writer must receive both a complete successful walk and a successful open
+before sending payload. A partial walk or either refusal ends that setup;
+an early successful open does not authorize data. Bounded clients may retain
+the sequential walk-then-open path when they lack a second request credit.
+Resource admission precedes upload setup, write offsets remain sequential,
+the complete record executes before submit, and the covering acknowledgement
+precedes the next transaction setup or reusable writer's next record. The
+[queued-write amendment](#queued-shell-writes) permits a bounded pixel window
+and submit behind the final record fragment without waiting for its reply.
+Terminal resource status
+discards pending setup replies
+and releases its fid without allowing a later reply to reopen the slot.
+
 ### Protocol and revisions
 
 `protocol/sophia-shell-files-v1.kdl` defines the file records and objects.
@@ -201,6 +223,7 @@ component's metadata audience.
 | `limits` | read | content profiles | The granted `ContentLimits` as a binary record, immutable for the grant |
 | `events` | read | all | Ordered records by byte offset, retained until acknowledged |
 | `transaction` | read/write | all | The attach's single candidate buffer; at most one open `transaction` fid per attach, as in the WM contract |
+| `transaction-reuse` | read/write | all, when supported | Optional reusable writer for the same single candidate buffer; shares exclusion with `transaction` |
 | `submit` | write | all | Submits the attach's staged candidate by epoch, submission ID and exact length; it names no fid |
 | `ack` | write | all | Acknowledges events through a sequence number |
 | `outputs` | read | content profiles | Pinned output facts object |
@@ -239,6 +262,13 @@ feeds of 2 x cap plus one shared 4 MiB build scratch. These are encoded-buffer
 bounds, not RSS; allocator capacity, metadata and queues are accounted
 separately. The per-object caps are: catalog 4 MiB, tabs 1 MiB, shortcuts
 128 KiB, indicators 32 KiB, descriptors 4 KiB, outputs 1 KiB.
+
+Each shell 9P connection may also retain one reusable read payload buffer with
+capacity at most the negotiated frame limit minus the 11-byte Rread overhead.
+This storage is separate from journal retention and queued output; include it
+in transport memory accounting. It is allocated on demand and released on
+version reset or disconnect. Reuse never borrows bytes from queued replies or
+changes their node/epoch delivery checks.
 
 The r8 catalog maximum is 3,014,740 bytes in old framing, and 3,145,876 bytes
 conservative with headers, which fits the 4 MiB cap. The new codec must
@@ -293,6 +323,167 @@ buffer therefore needs no more than the largest control record, not the WM's
 1 MiB. The shell transaction cap is independently fixed at 64 KiB per attach
 transaction buffer; it is not derived from the socket's frame limit.
 
+### Reusable transaction writer
+
+Accepted by niltempus on October 17, 2026 under
+[the reusable-writer decision](notes/decisions/7mls2e2q-reuse-a-shell-transaction-writer-without-changing-custody.md).
+Implementation and performance qualification are separate from this acceptance.
+
+`transaction-reuse` is an optional transport extension. It uses the existing
+record, `submit` and `ack` formats and grants no new role capability. The API
+line, record version and role revisions are unchanged. Clients finish the
+ordinary negotiation and its covering ACK before probing this node. Only
+`ENOENT` from that lookup selects the legacy `transaction` lifecycle; this is
+equivalent transport semantics, not a capability downgrade. Once the node is
+found, an open, authority or protocol error must not select another path.
+
+Opening claims one unique writer token in the attach's epoch. A live reusable
+writer excludes legacy and reusable opens even while idle. A reusable open
+also returns `EBUSY` while legacy staging or accepted custody exists. Expired
+or released tokens hold no reservation and cannot affect a successor.
+As with `transaction`, open requires read/write access and refuses append and
+truncate. A `submit` write targets the single live assembly on either path.
+
+The writer has five states:
+
+- **Idle:** reads return EOF and size is zero. A valid nonempty write at offset
+  zero begins assembly. Invalid initial writes change nothing. An empty write
+  at offset zero succeeds without beginning assembly or starting a deadline;
+  other initial offsets return `EINVAL`.
+- **Assembling:** the legacy append, identical-range retry, declared-length and
+  assembly-deadline rules apply. Complete record execution still precedes submit;
+  the queued-write amendment permits overlapping their replies.
+- **AwaitAck:** successful submit moves the bytes into immutable accepted
+  custody. They remain readable until the covering ACK. Every write, including
+  an empty write, returns `EBUSY` without changing bytes. Identical submit retry,
+  `EALREADY`, `EAGAIN`, journal capacity and semantic outcomes keep their existing
+  meanings. The covering ACK returns only the matching live writer to Idle.
+- **Refused:** a definitive submit refusal retains the assembly for reads.
+  Writes return `EBUSY`; the assembly deadline continues until clunk or expiry.
+  A decoded, current-epoch submit returns the retained refusal errno.
+- **Fenced:** assembly expiry, revocation, disconnect or epoch replacement
+  permanently invalidates the token. Reads and writes return `ESTALE`. A new
+  attach inherits neither assembly nor accepted state from the old connection.
+
+No rearm request is needed. A client may queue the covering ACK followed by
+the next offset-zero record write on the same connection. The server processes
+them in wire order; an ACK that does not release the live submission leaves
+the following write refused with `EBUSY`. A rejected ACK never authorizes work.
+
+One record buffer moves between these states, bounded by the same `STAGING`
+limits as legacy transactions (`SHELL_FILE_MAX_TRANSACTION_BYTES`, currently
+64 KiB). Capacity is reserved at open under the existing transaction allowance,
+not to an unbounded cache. ACK may recycle that capacity; clunk, expiry and
+teardown release it. Idle time does not expire a writer; the existing assembly
+deadline begins with the first nonempty byte and never renews on retries.
+
+Malformed submit bytes and foreign-epoch submit records leave assembly unchanged
+and submittable; they return `EINVAL` and `ESTALE`, respectively. `EAGAIN`
+preserves assembly for retry. Journal sequence or offset exhaustion returns
+`ENOSPC` without custody and is definitive. A definitive submit refusal retains the
+bytes for diagnosis until clunk or expiry, as the legacy path does. SDKs clunk
+that refused assembly before opening a fresh writer for later work. Clunk
+before submit cancels assembly; after submit it cannot undo custody or release
+accepted replay bytes before the covering ACK or connection teardown. A late
+clunk cannot cancel a successor token. Metadata identifies only the held token:
+a fenced token cannot reveal a successor's size or contents.
+
+Resource completion fences its upload binding, not this transaction writer.
+Upload admission, sequential byte offsets, explicit End, presentation and retirement
+rules are unchanged. The C and Rust SDKs discover and use this extension with
+equivalent custody, error and recovery behavior.
+
+### Queued shell writes
+
+Accepted by niltempus on October 17, 2026 under
+[the bounded-pipelining decision](notes/decisions/s5msyyv2-pipeline-shell-writes-with-bounded-recovery-and-unchanged-custody.md).
+SDK implementation and performance qualification remain pending. The prepared
+reusable-writer capture precedes implementation of this amendment.
+
+#### Final record fragment and submit
+
+A client may queue its final transaction-record Twrite and submit Twrite in
+that order on one connection, with distinct tags, without awaiting the final
+record reply. All earlier fragments must have complete successful replies.
+Setup, negotiation, covering ACK and single-live-transaction barriers remain.
+Use fresh legacy staging or a reusable writer rearmed after its covering ACK;
+this rule does not permit uncertain replay.
+
+The export executes these requests in wire order. Custody begins only at the
+existing submit acceptance point. Absent or incomplete assembly cannot gain
+custody. Existing errno precedence remains: accepted/replay checks and inbound
+EAGAIN can precede missing-staging ESTALE or length EINVAL. Clients reconcile
+both replies and any matching Submitted before applying submit retry policy.
+
+After a short or refused final record write, stop issuing that transaction and
+consume its queued submit response. Do not retry an incomplete assembly because
+submit answered EAGAIN. Preserve existing failed-record behavior. An unexpected
+successful submit or matching Submitted is authoritative custody: retain it,
+suppress replay and fail the connection. Submitted may precede Rwrite(submit).
+Unknown custody applies only where neither an event nor an authoritative reply
+established the outcome. After a successful record write, ordinary submit
+EAGAIN/backoff, identical retry and terminal rules continue unchanged.
+
+#### Bounded pixel window
+
+The SDK sender ceiling is `SHELL_FILE_MAX_QUEUED_UPLOAD_WRITES = 4` outstanding
+pixel Twrites. Existing tag credits, output bytes and service budgets may lower
+the window. Reserve control capacity before admitting data; fall back to a
+smaller window or sequential writes when necessary. Four is not a negotiated
+ContentLimits field or a server pending-request guarantee.
+
+Only adjacent bytes for the same resource, live binding, writer fid and grant
+may share the window. Do not pass a record, resource change, cancellation or
+End. Rust may gather adjacent queued SlotWrite units, retaining every ticket;
+C may fragment its current borrowed buffer, retaining the caller's ownership
+and completion rules. A fixed ring must not add per-frame heap allocations.
+Fragment writes at canonical chunk boundaries, msize overhead and iounit.
+Each issued offset assumes the preceding requested bytes will be accepted.
+Match replies by tag, retain out-of-order results and settle only the contiguous
+resolved prefix in issue order. Refill credits as they become available.
+
+End and ordinary closing clunk wait for all successful write replies for the
+resource. Presentation, retirement and frame-to-frame barriers remain unchanged.
+
+#### Recovery, deadlines and compatibility
+
+A positive short Rwrite advances the live cursor only by its count. A completing
+chunk refused with EAGAIN changes no bytes. Later queued writes whose planned
+offsets exceed that cursor refuse EINVAL without changing bytes while the same
+binding is live; a fenced binding answers ESTALE instead. This follows from
+cursor validation, not a remembered failure group at the server.
+
+On short write or retryable EAGAIN, stop refilling and drain the outstanding
+tail. Keep invalidated later units pending; their EINVAL replies must not settle
+them as Refused. Resume at the confirmed accepted prefix without duplicating
+acknowledged bytes. Apply the existing backoff only to EAGAIN. Settle each ticket
+Stored once all its bytes are confirmed. A tail success inconsistent with that
+prefix is a protocol failure, not permission to guess the cursor.
+
+For an ambiguous flush or lost reply, getattr may recover the cursor only on
+the same live fid, after its outstanding tail has drained or flush has settled
+its tags. Validate the qid and cursor against the retained byte range. A fenced
+fid answers ESTALE and recovery ends; disconnect permits no reconnect-and-replay.
+A permanent refusal or terminal resource event also ends refill and retry.
+Settle tickets from established byte custody and existing cancellation rules;
+never report unconfirmed bytes Stored. Consume or flush owned tags before
+releasing storage. Late replies cannot reopen a slot or affect its successor.
+
+Only successful canonical chunks renew the existing idle deadline. Queued,
+partial, empty, refused and invalidated writes do not. Transfer and assembly
+deadlines remain fixed. Existing staging, scratch and inbound bounds remain;
+do not buffer extra completed chunks to conceal EAGAIN or hold an owner lock
+across client streaming.
+
+This amendment relies on the shell export's synchronous wire-order guarantee.
+It adds no capability bit, node, opcode, role revision or record format. Old
+clients may remain sequential. Both SDKs must pass the ordering, cursor and
+errno fixtures against the oldest supported export revision and the current
+one before adoption. This amendment adds export fixtures, not server behavior.
+Do not infer compatibility from transaction-reuse discovery. Retain
+byte and work budgets and verify other connections' event and control service
+under a continuously full window; the credit ceiling alone proves no fairness.
+
 ### Resource staging without client-created files
 
 The `sophia-9p` core performs no create, mkdir or remove: Tlcreate, Tmkdir and
@@ -333,7 +524,8 @@ bookkeeping, not authority.
 `getattr` on the live bound slot reports its accepted append cursor as size:
 canonical bytes already passed to the store plus bytes in charged partial
 scratch. It reports the binding's qid, not a successor's. After a flush race,
-the writer can query that same binding and resume at this offset. Flush never
+the writer first drains or flushes its outstanding tail, then can query that
+same live binding and resume at this offset. Flush never
 undoes an executed write; repeating an earlier prefix is still refused.
 If the binding ended, the held fid is stale and cannot discover or append to
 a successor. This metadata read grants no pixel readback.
@@ -430,6 +622,7 @@ invented outcome or dropped owed record.
 The root names come from the vocabulary above. Snapshot bound is twice the sum of
 the disclosed feeds' caps (current plus one pinned older object) plus one
 shared 4 MiB build scratch.
+Every role below also discloses `transaction-reuse` when the extension is supported.
 
 | Role profile | Root names | Snapshot feeds and caps | Largest S-to-C record (file framing) | Journal bytes | Terminal reserve | Snapshot bound |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -768,13 +961,22 @@ candidates and activations for the old generation; it can continue acknowledging
 input while awaiting close or termination. An arbitrary runtime fixture that
 republishes a catalog is not evidence that production Session supports it.
 
-Session advances `facts_generation` when output facts change. The Outputs object
+Session advances `facts_generation` when output facts change, including a change
+to the admitted image-channel import-format set. An unchanged set does not
+advance the generation. Publish the new image-formats snapshot before the
+Outputs announcement; its formats generation equals `facts_generation`.
+The Outputs object
 and its ObjectPublished announcement carry that same generation. A candidate
 must name the Session's current facts when validated and when taken for renderer
 submission. Fetch the facts used to build the candidate, and disarm that local
 scene when a newer Outputs announcement arrives. This reduces stale work but
 does not eliminate a race with a later server update. The announcement does not
 reserve that generation for the client.
+
+A format-only change therefore requires components to fetch current facts and
+rebuild/resubmit candidates. This is the accepted topology cost of the
+[image-channel contract](sophia-image-channel.md); current byte-only production
+does not yet publish import formats. Old open snapshots remain immutable.
 
 Production Session supplies `interaction_generation` **1** to the native and
 ordinary shell candidate owners. It is not client-selected authority and is not
@@ -912,14 +1114,22 @@ add for 9P:
 
 ## File descriptors and GPU
 
-Version 1 carries bytes only. 9P has no descriptor transfer, and a v9fs mount
+The 9P stream carries bytes only. 9P has no descriptor transfer, and a v9fs mount
 could not carry one. Using SCM_RIGHTS on the same socket would be a side
-channel outside the protocol. Pixels stay copied exactly as today.
+channel outside the protocol. The separate
+[image descriptor channel](sophia-image-channel.md) is accepted for negotiated
+shell r9, with sealed-memory capability bit 13 and DMA-BUF bit 14. It retains
+the `api` line's `fd_transfer=none`. t338 delivered the sealed path. The
+[October 18 amendment](notes/decisions/qujwzrdz-admit-shell-content-through-a-negotiated-descriptor-channel-beside-the-9p-wire.md#accepted-amendment--immutable-shared-buffers-october-18-2026)
+requires sealed memory for production CPU image uploads and withdraws byte-only
+compatibility and caller-selected byte fallback. The existing byte record
+definitions elsewhere in this document remain a description of implementation awaiting
+retirement under t331; their numeric identities must not be reused.
 
 A 4 MiB resource needs about 64 writes at a 64 KiB msize, compared with 65
-chunks today. DMA-BUF or sealed memfd import remains a separate future
-contract (`docs/sophia-shell-v1-direction.md`, ADR `mn4mzcnf`). It would need
-its own admission, GPU-grant coupling and retirement. The GPU grant is
+chunks today. Sealed import and DMA-BUF capture have separate admission,
+custody and retirement under the shared contract. DMA-BUF implementation waits
+for proven renderer safe completion; acceptance makes no speedup claim. The GPU grant is
 unchanged and still cannot retract an already-open render-node descriptor.
 
 ## Compatibility and revision skew
@@ -933,7 +1143,15 @@ unchanged and still cannot retract an already-open render-node descriptor.
 
 The C and Rust desktop SDKs expose native records over standard 9P2000.L.
 Client implementations and their dependency pins belong in their repositories.
-Revision 9 and overview capability bit 13 are not part of this accepted contract.
+Revision 9 reserves image-channel capabilities 13 (sealed) and 14 (DMA-BUF);
+it does not allocate an overview capability. Sealed support is implemented;
+DMA-BUF retains its separate implementation gates. ResourceStatus reason 13
+(`image_channel_unavailable`) is valid only for Rejected after negotiated r9;
+earlier revisions and all other reason fields keep their existing bounds.
+Legacy codec entry points retain the <=12 check; revision-aware r9 codecs admit 13.
+The table lists the earlier role boundaries. Production image producers must
+also satisfy the sealed-only requirement; removing byte-only admission from the
+implementation and both SDKs remains migration work.
 Skew is resolved by revision and capability negotiation, with no wire fallback.
 Supervisor replacement starts a fresh process and epoch; reconnect never replays
 unsettled submissions.
@@ -998,7 +1216,7 @@ Rows marked as product gaps belong to their own tasks, not to this transport.
 | Dock (Provlita, r8) | Per-output allocations and edge reservations, checked against the allowed reservation extent. Pinned tiles from the catalog, with r8 identities at the 4 MiB cap. Activation names the catalog generation and slot and is accepted only against the Presented target. Launch context taken by Session from the committed WM output context, refused when stale. Replacing the dock does not disturb bar or launcher. Retained dock content retires after revocation, and storage is reclaimed. | Running-window feed (t043); reservation arbitration (t106) |
 | Launcher (Bemenu, r7) | Opening from Session; parentless allocation with no reservation. Focus lease minted only after an actual Presented, and FocusRevoked on loss. Semantic input with stale acknowledgements. A query edit disarms activation. Activation admits a queue slot only; the revocation semantics above hold. Close, and the opening timeout. | Popout workflow (t099) |
 | Bar (Lom, r6) | Panel allocation per output with its reservation. Indicator snapshot and exact activation echo. Presented work-area bands survive reconnect until the new first Present. Content upload and retirement within role limits. | Recovery (t100) |
-| Legacy descriptor (Narthex, r1-r8) | Descriptor snapshot, candidate, activation and ack; tabs; shortcuts and reference; launcher catalog when r4 and bit 5 are selected. Reservation via candidate, and withdrawal. | Overview r9 exists only on the unmerged `overview` branch |
+| Legacy descriptor (Narthex, r1-r8) | Descriptor snapshot, candidate, activation and ack; tabs; shortcuts and reference; launcher catalog when r4 and bit 5 are selected. Reservation via candidate, and withdrawal. | The parked `overview` branch has no reserved revision or capability bit; its informal r9/bit-13 claim is withdrawn. Revival needs fresh allocation (currently r10/bit 15) |
 
 ## Budgets
 
@@ -1016,6 +1234,24 @@ before measurement and cannot be relaxed after a result.
 
 Each distribution reports p50, p95 and p99, the maximum, and every timeout,
 with the same client, workload and output on both transports.
+
+### Cost accounting scope (accepted October 15, 2026)
+
+For the B9 cost gate, measure steady-state Session plus client: CPU across all
+their threads, including foreign-library CPU, and Rust global allocation and
+reallocation calls. Divide CPU by exact uploaded MiB (1,048,576 bytes) and
+allocation operations by offered frames. Include preparation, encoding,
+transport, owner processing, presentation, retirement and intervening work
+within the declared workload interval. Do not subtract idle costs.
+
+Exclude startup before that interval, WM/authentication/helper processes,
+foreign allocation calls, GPU allocations and kernel allocations. This scope
+does not establish whole-desktop efficiency. Use separate instrumented cost
+and ordinary latency runs. A cost pass requires the 9P upper bound to be at
+most 1.10 times the paired IPC lower bound; overlapping uncertainty is not a
+pass. The optimization objective is to beat IPC on both measures, established
+only when the 9P upper bound is below the IPC lower bound. The +10% acceptance
+ceiling and all latency and correctness requirements remain unchanged.
 
 ## Amendment 1 (2026-09-26): native bodies, IPC-independent records
 

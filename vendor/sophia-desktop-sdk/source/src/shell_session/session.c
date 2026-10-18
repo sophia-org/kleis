@@ -132,9 +132,8 @@ static int received_custody(const struct sophia_ss *s)
     while (at <= c->event_used && c->event_used - at >= 4) {
         n = (size_t)ss_get(c->event_bytes + at, 4);
         if (n < SOPHIA_SF_HEADER_BYTES || n > c->event_used - at ||
-            sophia_sf_decode(c->event_bytes + at, n, &r) || r.header.epoch != c->epoch ||
-            !sf_session_event_allowed(c, &r) ||
-            r.header.kind < 16 || r.header.kind >= 256 || r.header.sequence <= sequence ||
+            sf_session_event_decode(c, c->event_bytes + at, n, &r) ||
+            r.header.sequence <= sequence ||
             r.header.kind == SOPHIA_SF_NEGOTIATED || r.header.kind == SOPHIA_SF_RESOURCE_STATUS)
             return 0;
         if (r.header.kind == SOPHIA_SF_SUBMITTED)
@@ -155,7 +154,8 @@ static void finish(struct sophia_ss *s, enum sophia_ss_state state)
     if (s->flight) {
         if (sophia_sf_client_submission(&s->files, &id, &stage) || id != s->flight_id)
             stage = SOPHIA_SF_SUBMISSION_ISSUED;
-        if (stage == SOPHIA_SF_SUBMISSION_ISSUED && received_custody(s))
+        if (s->files.submit_accepted ||
+            ((stage == SOPHIA_SF_SUBMISSION_ISSUED || s->files.pair_failed) && received_custody(s)))
             stage = SOPHIA_SF_SUBMISSION_CUSTODIED;
         if (stage == SOPHIA_SF_SUBMISSION_CUSTODIED)
             outcome = SOPHIA_SS_SUBMITTED;
@@ -174,7 +174,9 @@ static void finish(struct sophia_ss *s, enum sophia_ss_state state)
     s->queued = 0;
     s->queue_used = 0;
     s->waiting = 0;
+    s->upload_waiting = 0;
     s->state = state;
+    ss_image_drive(s, s->now_ms);
 }
 static void track(struct sophia_ss *s)
 {
@@ -195,6 +197,22 @@ static int drain(struct sophia_ss *s)
 {
     const struct sophia_sf_record *e = NULL;
     int r = 0;
+    if (s->files.upload_offset != s->upload_seen || !s->files.upload_stage) {
+        s->upload_seen = s->files.upload_offset;
+        s->upload_retry_delay = 0;
+    }
+    if (!s->files.upload_wait || s->files.upload_closing)
+        s->upload_waiting = 0;
+    if (s->files.upload_wait && !s->files.upload_count &&
+        !s->files.upload_closing && !s->upload_waiting) {
+        s->upload_waiting = 1;
+        s->upload_progress = 0;
+        s->upload_retry_delay = !s->upload_retry_delay ? 4u
+                               : s->upload_retry_delay < 256u ? 2u * s->upload_retry_delay
+                                                              : 256u;
+        s->upload_retry_at = s->now_ms > UINT64_MAX - s->upload_retry_delay ? UINT64_MAX
+                                        : s->now_ms + s->upload_retry_delay;
+    }
     if (s->files.submit_wait && !s->waiting) {
         s->waiting = 1;
         s->progress = 0;
@@ -208,6 +226,7 @@ static int drain(struct sophia_ss *s)
         s->acked_seen = s->files.acked_sequence;
         s->ack_clock = s->now_ms;
         s->progress = 1;
+        s->upload_progress = 1;
     }
     /* A negotiated content grant requires its bootstrap Limits fetch.
      * Metadata-only descriptor sessions never issue that fetch. */
@@ -216,7 +235,7 @@ static int drain(struct sophia_ss *s)
         r = SOPHIA_9P_INVALID;
     while (!r && !sophia_sf_client_event(&s->files, &e) &&
            (e->header.kind == SOPHIA_SF_NEGOTIATED || e->header.kind == SOPHIA_SF_REFUSED ||
-            e->header.kind == SOPHIA_SF_SUBMITTED)) {
+            e->header.kind == SOPHIA_SF_SUBMITTED || ss_image_event(s, e))) {
         if (e->header.kind == SOPHIA_SF_REFUSED) {
             s->refused = 1;
             s->refused_reason = e->value.refused.reason;
@@ -225,6 +244,7 @@ static int drain(struct sophia_ss *s)
         ss_consumed(s, e->header.sequence);
         r = sophia_sf_client_event_consume(&s->files);
     }
+    ss_image_status(s);
     track(s);
     return r;
 }
@@ -260,6 +280,7 @@ int ss_pump(struct sophia_ss *s, size_t budget)
             return settle(s, r);
         if (s->state == SOPHIA_SS_NEGOTIATING && sophia_sf_client_ready(&s->files))
             s->state = SOPHIA_SS_READY;
+        ss_image_drive(s, s->now_ms);
         /* A slot freed or an event consumed in this pass needs its next
          * request queued now, so poll reports POLLOUT for it. */
         if (s->last_consumed == consumed &&
@@ -285,6 +306,10 @@ int sophia_ss_dispatch(struct sophia_ss *s, short revents, size_t budget, uint64
         s->waiting = 0;
         (void)sophia_sf_client_submit_retry(&s->files);
     }
+    if (s->upload_waiting && (s->upload_progress || now_ms >= s->upload_retry_at)) {
+        s->upload_waiting = 0;
+        (void)sophia_sf_client_upload_retry(&s->files);
+    }
     return ss_pump(s, budget);
 }
 int sophia_ss_poll_fd(const struct sophia_ss *s) { return s && s->files.wire ? s->files.wire->fd : -1; }
@@ -296,11 +321,23 @@ short sophia_ss_poll_events(const struct sophia_ss *s)
 }
 int sophia_ss_timeout(const struct sophia_ss *s, uint64_t now_ms)
 {
-    if (!s || ss_final(s) || !s->waiting)
+    uint64_t at = UINT64_MAX;
+    if (!s || ss_final(s) || (!s->waiting && !s->upload_waiting))
         return -1;
-    if (s->progress || now_ms >= s->retry_at)
+    if (s->waiting) {
+        if (s->progress)
+            return 0;
+        at = s->retry_at;
+    }
+    if (s->upload_waiting) {
+        if (s->upload_progress)
+            return 0;
+        if (s->upload_retry_at < at)
+            at = s->upload_retry_at;
+    }
+    if (now_ms >= at)
         return 0;
-    return s->retry_at - now_ms > INT_MAX ? INT_MAX : (int)(s->retry_at - now_ms);
+    return at - now_ms > INT_MAX ? INT_MAX : (int)(at - now_ms);
 }
 enum sophia_ss_state sophia_ss_state(const struct sophia_ss *s)
 {

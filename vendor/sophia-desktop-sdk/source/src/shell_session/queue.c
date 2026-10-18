@@ -126,13 +126,16 @@ int sophia_ss_reserve(struct sophia_ss *s, uint16_t slots, size_t bytes,
     s->reserved_slots = slots;
     s->reserved_bytes = bytes;
     out->serial = ++s->reservation;
+    out->owner = s;
+    out->epoch = s->files.epoch;
     out->slots = slots;
     out->bytes = bytes;
     return 0;
 }
 static int release(struct sophia_ss *s, struct sophia_ss_reservation *v)
 {
-    if (!s || !v || !s->reserved || v->serial != s->reservation)
+    if (!s || !v || !s->reserved || v->owner != s || v->epoch != s->files.epoch ||
+        v->serial != s->reservation)
         return SOPHIA_9P_ARGUMENT;
     s->reserved = 0;
     s->reserved_slots = 0;
@@ -144,7 +147,8 @@ int sophia_ss_commit(struct sophia_ss *s, struct sophia_ss_reservation *v,
                      const struct sophia_sf_record *records, size_t count, uint64_t *first_ticket)
 {
     int r;
-    if (!s || !v || !s->reserved || v->serial != s->reservation)
+    if (!s || !v || !s->reserved || v->owner != s || v->epoch != s->files.epoch ||
+        v->serial != s->reservation)
         return SOPHIA_9P_ARGUMENT;
     if (ss_final(s)) {
         (void)release(s, v);
@@ -160,6 +164,25 @@ int sophia_ss_commit(struct sophia_ss *s, struct sophia_ss_reservation *v,
 int sophia_ss_cancel(struct sophia_ss *s, struct sophia_ss_reservation *v)
 {
     return release(s, v);
+}
+int ss_room(const struct sophia_ss *s, size_t bytes)
+{
+    return s->queued + s->reserved_slots < s->slots &&
+           bytes <= s->queue_capacity - s->queue_used - s->reserved_bytes &&
+           bytes <= s->files.tx_capacity && s->next_ticket < UINT64_MAX - s->reserved_slots;
+}
+int ss_admit_encoded(struct sophia_ss *s, const uint8_t *b, size_t n, uint64_t *ticket)
+{
+    if (s->state != SOPHIA_SS_READY || !ss_room(s, n))
+        return SOPHIA_9P_BUSY;
+    memcpy(s->queue + s->queue_used, b, n);
+    memset(s->queue + s->queue_used + 16, 0, 8);
+    s->queue_used += n;
+    *ticket = s->next_ticket;
+    s->entries[s->queued].ticket = s->next_ticket;
+    s->entries[s->queued++].bytes = n;
+    ss_set(s, s->next_ticket++, SOPHIA_SS_ADMITTED_LOCAL, 0);
+    return 0;
 }
 /* Hand the queue head to the file client, which copies it and assigns its id. */
 int ss_handoff(struct sophia_ss *s)

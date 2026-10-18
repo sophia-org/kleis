@@ -41,6 +41,7 @@ struct sophia_lc_upload_write {
   struct sophia_lc_operation op;
   uint32_t count;
 };
+struct sophia_lc_image;
 /* Private state exposed for caller-owned allocation. Do not modify it. */
 struct sophia_lc_client {
   struct sophia_9p_client *wire;
@@ -69,16 +70,30 @@ struct sophia_lc_client {
   /* Borrowed until every issued Twrite has settled, including cancellation. */
   const uint8_t *upload_data;
   uint8_t tx[SOPHIA_LF_MAX_CANDIDATE], events[1024], object[1024], boot[128];
+  /* The optional image adapter (sophia_lock_image.h) and its whole-file
+   * reads; unused while image is NULL. */
+  struct sophia_lc_image *image;
+  struct sophia_lc_operation file_op;
+  const char *file_name;
+  uint8_t *file_buf;
+  size_t file_cap, file_used;
+  uint64_t image_submission;
+  uint32_t file_fid, file_iounit, file_error;
+  int file_status;
+  uint8_t file_stage, file_ready;
 };
 
 /* wire must be fresh and exclusively owned by this client until disposal.
- * The offer must request present; chords need the chords capability. Starts
+ * The offer must request present; chords need the chords capability.
+ * Sealed images (bit 2) need a maximum revision of at least 2 and the
+ * adapter in sophia_lock_image.h; DMA-BUF (bit 3) is not offered. Starts
  * version/attach, reads api and limits, opens the streams and submits the
  * Negotiate as submission 1, all nonblocking. */
 int sophia_lc_init(struct sophia_lc_client *, struct sophia_9p_client *,
                    const struct sophia_lf_negotiate *offer);
 /* Continue from an already admitted root (for example sophia_la_root()). The
- * wire must be quiescent and owned exclusively by this client afterward. No
+ * wire must be quiescent, retain only root and have no partial input. It is
+ * owned exclusively by this client afterward. No
  * Tversion or Tattach is sent; authentication and its identity remain intact.
  * The server still checks authority on every retained operation. */
 int sophia_lc_init_attached(struct sophia_lc_client *, struct sophia_9p_client *,
@@ -92,6 +107,17 @@ uint64_t sophia_lc_epoch(const struct sophia_lc_client *);
 /* Nonzero after a refused negotiation: sophia_lf_refusal. */
 uint16_t sophia_lc_refusal(const struct sophia_lc_client *);
 uint32_t sophia_lc_remote_error(const struct sophia_lc_client *);
+/* Passive progress; consumed is eligible for ACK, acked has a successful reply.
+ * Timers remain caller-owned. Pending flags clear on terminal failure, while
+ * the two watermarks remain inspectable. */
+struct sophia_lc_obligations {
+  uint64_t consumed, acked;
+  unsigned upload_writes;
+  uint8_t event_pending, object_pending, upload_pending;
+  uint8_t waiting_for_ack, waiting_for_retry;
+};
+int sophia_lc_obligations(const struct sophia_lc_client *,
+                          struct sophia_lc_obligations *);
 /* Borrowed until disposal; NULL before READY. Chord IDs are offer indices
  * below welcome->granted_chords. */
 const struct sophia_lf_limits *sophia_lc_limits(const struct sophia_lc_client *);

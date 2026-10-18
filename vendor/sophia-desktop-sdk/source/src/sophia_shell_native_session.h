@@ -144,6 +144,7 @@ enum sophia_ns_resource_state {
 };
 struct sophia_ns_resource {
     uint64_t id, generation, transaction, ticket;
+    uint64_t image_offer;
     uint8_t state;
 };
 struct sophia_ns_allocation {
@@ -271,6 +272,10 @@ int sophia_ns_release(struct sophia_ns *, uint64_t now_ms, uint64_t *ticket);
 int sophia_ns_upload_begin(struct sophia_ns *, struct sophia_sf_resource_begin, uint64_t *ticket);
 int sophia_ns_upload_end(struct sophia_ns *, uint64_t *ticket);
 int sophia_ns_upload_cancel(struct sophia_ns *, uint64_t *ticket);
+/* Cancel a tracked Begun/Admitted resource, including after a refused End.
+ * Local admission does not release it; its terminal status does. */
+int sophia_ns_resource_cancel(struct sophia_ns *, uint64_t resource_id, uint64_t generation,
+                              uint64_t *ticket);
 int sophia_ns_retire(struct sophia_ns *, uint64_t resource_id, uint64_t generation,
                      uint64_t *ticket);
 /* FrameDemand for the granted allocation: refused while the output's permit
@@ -300,4 +305,15 @@ const struct sophia_sf_native_binding *sophia_ns_focus(const struct sophia_ns *)
 const struct sophia_ns_shown *sophia_ns_presented(const struct sophia_ns *);
 const struct sophia_sf_allocation_result *sophia_ns_allocation(const struct sophia_ns *);
 uint64_t sophia_ns_revision(const struct sophia_ns *);
+struct sophia_ss_image;
+/* Adopt one producer-verified Settled + Accepted + Retained ISB from the
+ * same session and content grant into a free native resource slot. Success
+ * also forgets the offer; failures consume neither offer nor slot. Duplicate
+ * resource identities are refused across offers. No I/O or allocation.
+ * ChannelClosed permits adoption of an already retained resource, while role
+ * closure or a stale grant does not. Continue normal ordered event delivery:
+ * the original Accepted is an idempotent no-op, including while Retiring;
+ * a contradictory status fails the lifecycle. ResourceRetire/ResourceReleased
+ * govern resource lifetime independently of the consumed offer. */
+int sophia_ns_adopt_image(struct sophia_ns *, struct sophia_ss_image *, uint64_t offer);
 #endif

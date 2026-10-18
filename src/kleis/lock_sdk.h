@@ -33,7 +33,8 @@ typedef struct {
  * A provisioned SOPHIA_LAUNCH_AUTH_FD selects the SDK's bounded five-second
  * startup conversation. Its channel is owned until free; any failure refuses
  * startup rather than attempting plain attach. */
-kleis_lock *kleis_lock_open(int fd, uint16_t chord_keysym_count,
+kleis_lock *kleis_lock_open(int fd, const char *endpoint_dir,
+                            uint16_t chord_keysym_count,
                             const uint32_t *keysyms, const uint16_t *modifiers);
 void kleis_lock_free(kleis_lock *);
 /* 0 or a terminal SDK result. */
@@ -69,13 +70,33 @@ int kleis_lock_retire(kleis_lock *, uint64_t transaction, uint64_t resource_id,
 int kleis_lock_submission(const kleis_lock *, uint32_t *stage,
                           uint32_t *submit_error);
 int kleis_lock_submit_retry(kleis_lock *);
-int kleis_lock_upload_begin(kleis_lock *, uint64_t transaction,
-                            uint64_t resource_id, uint64_t resource_generation,
-                            uint32_t width_px, uint32_t height_px,
-                            uint16_t slot);
-int kleis_lock_upload_chunk(kleis_lock *, const void *, size_t);
-int kleis_lock_upload_ready(const kleis_lock *);
-int kleis_lock_upload_pending(const kleis_lock *);
-int kleis_lock_upload_end(kleis_lock *);
-int kleis_lock_upload_cancel(kleis_lock *);
+/* Sealed image channel (ISB), attached at open when endpoint_dir names
+ * the directory holding the lock provider's 9P socket. Image admission
+ * is mandatory: a client that cannot reach ChannelReady must not fall
+ * back to byte uploads, and this shim exposes no byte upload at all. */
+/* Channel: 0 not started, 1 ready, 2 closed (unavailable or lost). */
+int kleis_lock_image_channel(const kleis_lock *);
+/* Producer socket for the provider poll set; -1 until started. */
+int kleis_lock_image_poll_fd(const kleis_lock *);
+short kleis_lock_image_poll_events(const kleis_lock *);
+/* Milliseconds until the next image dispatch is due; -1 for none. */
+int64_t kleis_lock_image_timeout(const kleis_lock *, uint64_t now_ms);
+/* Drive discovery, connection and producer progress. Call after each
+ * kleis_lock_service and when the image poll fd is ready. */
+int kleis_lock_image_dispatch(kleis_lock *, short revents, uint64_t now_ms);
+/* Copy pixels into a fresh sealed ISB and submit it as one ImageBegin.
+ * 0 with *offer set (the producer owns the source), BUSY/AGAIN with the
+ * caller's pixels untouched, or a terminal error. lock_epoch and
+ * topology come from the client's current lock object. */
+int kleis_lock_image_begin(kleis_lock *, uint64_t now_ms, uint64_t resource_id,
+                           uint64_t resource_generation, uint64_t output,
+                           uint64_t allocation, uint64_t view, const void *pixels,
+                           uint32_t width_px, uint32_t height_px,
+                           uint64_t *offer);
+/* One live offer: state (sophia_ip_offer_state), producer status and
+ * SourceReleased disposition copied out. 0 or an error. */
+int kleis_lock_image_offer(const kleis_lock *, uint64_t offer, uint32_t *state,
+                           uint32_t *status, uint32_t *disposition);
+int kleis_lock_image_forget(kleis_lock *, uint64_t offer);
+int kleis_lock_image_cancel(kleis_lock *, uint64_t offer, uint64_t now_ms);
 #endif

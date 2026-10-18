@@ -52,14 +52,17 @@ prevents EGL initialization; it does not remove linked libraries.
 
 One worker owns rendering and readback. The provider thread handles the
 socket and UI events independently. Each output has two bounded pixel slots;
-a borrowed upload remains immutable until the SDK releases it. The GPU also
+a borrowed frame remains immutable until copied into a sealed source. The GPU also
 holds a native-size renderbuffer, a PBO and grid textures per output. Removed
 or resized outputs release their resources once outstanding leases finish.
 
-Uploads use up to eight ordered writes with control capacity reserved.
-Outputs take turns. Obsolete rain can be cancelled, while a started feedback
-color finishes and further edits coalesce. A busy admission retains its
-finished frame, and End/Cancel retries keep their own bounded deadline.
+Uploads require lock r2 and the sealed-image grant. Each frame is copied into
+one sealed memfd and offered over the image channel. Outputs take turns.
+Obsolete rain can be cancelled, while a started feedback color finishes and
+further edits coalesce. Busy admission retains the sealed source; ImageBegin
+and Cancel retry through the SDK. Presentation waits for Accepted and
+SourceReleased(Retained). Missing readiness or unsettled transfer expiry fails
+the connection; there is no byte-upload fallback.
 Animation uses monotonic elapsed time without catch-up bursts.
 
 ## Configuration

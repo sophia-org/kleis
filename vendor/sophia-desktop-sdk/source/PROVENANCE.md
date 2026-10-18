@@ -1,5 +1,289 @@
 # Extraction and contract provenance
 
+## Native ISB adoption, 2026-10-18
+
+The paired native-launcher adoption APIs consume a verified settled offer only
+after role, grant, bounds, duplicate and registry-capacity checks. They preserve
+retirement across matching late Accepted observations and fail closed on
+contradictory status. See API-PARITY.md for the exact custody contract and the
+different C/Rust event-consumption controls.
+
+Final device-hidden validation passes: Rust workspace all-target tests and
+strict Clippy, Rust formatting, and C's full `make check`. The Rust adoption
+target includes six controls; the C shell image target independently covers
+the same cases. The initial C fixture failure was a retained ResourceStatus
+blocking a later SourceReleased read; consuming that application head fixes
+the fixture without weakening producer settlement. The supplied deferred
+Limits grant is now 3, matching its existing metadata and status fixtures.
+
+Logs are under Sophia's development-evidence directory,
+`isb-client-migration-20261018/cli-rust-final-tests.log`,
+`cli-rust-final-clippy.log` and `cli-c-final-check.log`. Earlier failed runs
+remain retained. No production-export, authenticated-launch, native-cost or
+physical-presentation acceptance is claimed by these SDK checks.
+
+## ISB-only producer and role setup, 2026-10-18
+
+This implements the accepted ISB amendment in signed Sophia
+`9941d4c838e388e4944452ffaab06f69eae2c84f`; the already-pinned spec copies are
+unchanged. C and Rust remove producer byte fallback together and permit shell
+image setup after negotiated Limits. Dock and launcher keep their role grants
+at r9; existing cancellation and retained backing custody are unchanged.
+API-PARITY.md distinguishes the independent scripted controls from production
+client migration and native acceptance, which remain separate work.
+
+Device-hidden `make check` passes with strict compiler warnings, including the
+new role and deferred-attachment controls. The first role fixture used a
+four-byte generic Limits object beside larger image discovery bounds and was
+correctly refused; the fixture now publishes matching content bounds. Diff
+checks pass. Logs are retained as `isb-client-migration-20261018` in the owning
+Sophia development-evidence directory. The independent Rust suite passes.
+
+## ISB naming, 2026-10-18
+
+niltempus approved Immutable Shared Buffers (ISB) as the name of the production
+CPU image architecture. The coordinated Sophia working tree based on signed
+`0045f3436` supplies the updated image, shell and lock contract text; exact bytes are
+in `spec/SHA256SUMS`. Both independent SDKs rename the source builders together:
+Rust `IsbSource`, `create_isb`, `finish_isb`; C `sophia_ip_isb_create` and
+`sophia_ip_isb_finish`. Callers must rebuild against these names. Wire values,
+seal checks, ownership, failure handling and generated/golden codecs are
+unchanged. Sophia's byte-upload retirement is accepted but remains pending;
+this naming change does not claim it is implemented.
+
+## Lock sealed-source refusal names, 2026-10-17
+
+The lock KDL, lock contract and shared image contract are copied from the
+coordinated Sophia working tree based on signed `d5ffb8d2a`. The exact bytes
+are recorded in `spec/SHA256SUMS`; reasons 10/11 name invalid source and timeout.
+
+## Image cancellation identity, 2026-10-17
+
+The shared image contract is copied from the coordinated Sophia working tree
+based on signed `67b38ae5d`. Its exact digest is in `spec/SHA256SUMS`.
+It records the approved ResourceCancel identity and custody rules for both
+roles, implemented in C `e777235`. This sync changes no C library behavior;
+the Rust producer counterpart remains open.
+
+## Shared image-channel acceptance, 2026-10-17
+
+Spec copies come from the coordinated Sophia acceptance working tree based on
+signed `eea44c4d2`; exact bytes are identified by `spec/SHA256SUMS`. Sophia will
+adopt this signed SDK revision with those same authoritative contract bytes.
+The public r9/r2 image codecs and runtime channel are not implemented by this
+commit. Reviewed lifecycle peers are Rust `8f7dc5d` and C `b2ca17d`; the accepted
+contract preserves their evidence limits and leaves production byte paths intact.
+
+
+## Queued shell submit, 2026-10-17
+
+The shell contract copy comes from signed Sophia `feaf3cbc7`. B2 queues
+submit behind the final record write, retaining both tag outcomes before retry
+or failure. Earlier fragments, startup and the covering-ACK barrier retain
+their ordering. A failed record never retries its paired submit; observed
+acceptance survives the failure and the connection stops.
+
+Independent C and Rust scripted tests cover legacy and reusable writers,
+withheld and reversed replies, early Submitted, short records and paired
+submit refusals. Rust's shell-client tests and strict Clippy pass; the full C
+suite passes, including prior-fragment ordering. Both independent startup peers
+pass both Sophia `116075541` (the oldest supported export) and `feaf3cbc7`
+with metadata and content negotiation. These startup exchanges do not cover
+every export failure path. Vendor adoption and native performance remain pending. B3 pixel-write
+windowing is not implemented by this change.
+
+## Reusable shell transaction writer, 2026-10-17
+
+The optional `transaction-reuse` node follows signed Sophia `ee22309ba`.
+Both SDKs probe after negotiation and its covering ACK; only lookup ENOENT
+selects legacy transactions. Successful writers survive submissions; covering
+ACKs permit reuse, and definitive refusals close the writer before replacement.
+C retains explicit caller-driven ACK scheduling and startup readiness; admission
+waits for discovery and the writer barrier. Rust retains its automatic and manual
+ACK modes. C consumers must rebuild against the changed client storage layout.
+Independent scripted tests cover repeated reuse, refusal replacement and lookup
+errors. Both independent startup peers pass the real export. Snapshot adoption and
+native performance qualification remain pending; request reductions are not measured allocation savings.
+
+## Allocation-free shell candidate sizing, 2026-10-17
+
+Rust now counts validated application candidates through the same field writers
+used for encoding. Whole-candidate validation borrows rows, descriptor uniqueness
+uses bounded stack storage, and padded strings no longer need a temporary vector.
+C already supplies allocation-free sizing; its independent literal and boundary
+tests now assert the returned sizes directly. SHELL-SIZING.md maps the APIs and
+header differences. The Rust protocol and shell suites, strict protocol Clippy,
+C check suite and standalone allocation probe pass. Both independent startup
+peers pass Sophia's real metadata/content export. The probe establishes zero
+allocations only for its named queries; no throughput improvement or full t333
+release qualification is claimed.
+
+## Lock handoff and role inventory audit, 2026-10-17
+
+C now rejects attached lock startup with extra fids or partial input, matching
+Rust's existing guard. The new C partial-input regression failed before the
+fix; independent extra-fid and partial-input controls now pass in both SDKs.
+The full C suite, Rust lock suite and strict lock Clippy pass. Both independent
+peers pass Sophia's protected idle and queued-tail revocation tests. The WM and
+lock maps identify current APIs and distinguish historical qualification runs.
+Fresh authorized replacement and SDK reauthentication still need audit.
+
+## Caller-driven shell startup, 2026-10-17
+
+Rust adds an owned nonblocking startup driver; C's existing borrowed session
+already provides the counterpart. Both publish the operation map in
+SHELL-STARTUP.md and independent executable peers. Each peer passes Sophia's
+real-export fixture with one-byte dispatch budgets, with and without content
+limits. Admission is supplied by the fixture; no protected launch or physical
+presentation is claimed. The Rust shell suite, strict all-target shell Clippy
+and C check suite pass. Full desktop release acceptance remains under t333.
+
+## Shell contract reconciliation, 2026-10-16
+
+The shell file specification now matches signed Sophia `d817e6d8ab1906ff191e6bbb1fec9a902ead9b89`:
+per-connection request ordering, reusable read-buffer accounting and the accepted
+CPU/allocation cost scope. This refreshes the document and its digest; no C API,
+wire record or implementation changes. Sophia's immutable snapshot check requires
+this equality before adopting the new SDK revision.
+
+## Portal and broker publication candidate, 2026-10-16
+
+This series adds native portal requester sessions and broker sessions in both
+SDKs, and joins recipient capture/frame operations to their session drivers.
+The broker codecs follow the pinned Sophia `519f07fd1` contract; no legacy IPC
+framing or runtime owner is imported. C remains independently usable without
+Rust. The complete Rust workspace and C check suites pass, as does the Nim
+requester binding smoke test. Detailed paired scenarios and exact export-peer
+hashes are in API-PARITY.md and PORTAL-PARITY.md.
+
+The broker's shared-core export fixtures cover negotiation, retirement and
+atomic two-row disclosure responses. Both peers also pass the protected variant
+using actual ProcessSupervisor evidence and Bubblewrap 0.13.0; current executable
+hashes are in API-PARITY.md. Production reducer integration and the live migration
+remain open in Sophia t314.
+These additions do not establish full t333 parity or change installed SDK pins.
+Earlier checkpoints below describe their source state at the time.
+
+## t333 broker discovery and incoming events
+
+The independent C and Rust discovery/event codecs follow the designed
+`sophia-broker-files-v1.kdl` and markdown copied from signed Sophia
+`519f07fd1b6db3a665ae1e74368a3d2e234cbf9c`. No broker runtime or legacy IPC
+framing is imported. The manifest pins the exact source bytes. These passive,
+allocation-free decoders are not a broker client or an implemented export;
+response encoding and request correlation remain next.
+
+## t333 administrative info decoder
+
+The new passive info decoder is implemented from the pinned
+`spec/sophia-admin-files.md` grammar (Sophia `baedfd0c9`), independently
+in C and Rust. It imports no runtime owner or transport. Both parse into
+fixed-size values without heap allocation; literal and malformed-boundary
+tests pass. Remaining administrative codecs and the client are still missing.
+
+## t333 Rust WM protocol foundation
+
+Rust now extracts Sophia's neutral WM codecs as `sophia-wm-protocol`. Its schema,
+API/file docs and golden corpus were compared byte for byte with this SDK's
+pins; no C contract or implementation changed. Rust's 71 extracted tests and
+C's full independent `make check` pass. Matrix 17 retains the full missing Rust
+WM session checklist; codecs alone do not establish client or export parity.
+
+## t333 local close comparison and shell audit
+
+Rust now exposes explicit local close with retained custody. C's existing
+`unknown_after_issued_submit`, staged-close, closed-reservation and outcome-ring
+tests cover the matching outcomes; full `make check` passes. Matrix 16 maps
+remaining shell session operations and names Rust's automatic fetch/journal
+policy and missing allocation-free size query, for production-export review.
+C code and layouts are unchanged in this slice.
+
+## t333 configurable queue comparison
+
+Rust can now represent every C queue size and select zero control headroom for
+a shared pool. The C descriptor control uses two slots: held reservation
+credits block other admission; after commit/handoff, one record is outside the
+queue in separate transaction storage, so another can enter before the queue
+fills. Rust retains the wire-owned record's charge. Full `make check` passes;
+matrix 15 records this storage/accounting difference rather than promising
+identical admission timing. No C production behavior or layout changed.
+
+## t333 general batch comparison
+
+Rust's general batch API now covers the native, descriptor, indicator and
+catalog records already accepted by C's submission/reservation API. A new C
+scripted-session control reserves a descriptor pair, services the connection,
+then commits both and observes each Submitted outcome. Full `make check`
+passes. Matrix 14 records raw-submission responsibilities and Rust's prepared
+handle ownership. C layouts and production behavior are unchanged.
+
+## t333 presentation and edit convenience comparison
+
+Rust now provides borrowed presentation metadata and reserve-before-edit
+convenience matching `sophia_ns_presented` and `sophia_ns_input_apply`. A new
+independent C test verifies a callback returning false is invoked once and
+produces a Stale ACK. Full `make check` passes. Matrix 13 records Rust's
+pre-encoded disposition selection and fail-closed panic behavior; C callbacks
+must return normally. No C layout or production behavior changed here.
+
+## t333 owning Rust facade comparison
+
+Rust now owns and services a native connection through `NativeLauncherSession`.
+C retains its borrowed `sophia_ns`/`sophia_ss` model. Matrix 12 documents event,
+transaction, snapshot and clock differences. A C regression verifies that reading
+an Action again does not restart its receipt-based deadline hint. Full
+`make check` passes. Rust's five facade controls and full workspace checks pass;
+production-export qualification remains pending. C layouts and behavior are
+unchanged in this slice.
+
+## t333 native pointer response comparison
+
+The Rust lifecycle now matches C's retained Action and atomic activation/ACK
+response. A new C control proves a displayed nonselected row can activate;
+existing tests cover busy admission, cancellation and one activation at a time.
+Full `make check` passes. Rust separately checks exact wire records, stale
+actions, preparation cancellation, queue saturation and split custody outcomes.
+Matrix revision 11 records the prepared-handle API difference and remaining
+facade work. No C production behavior or layout changed in this slice.
+
+## t333 cancellation after a refused End
+
+`sophia_ns_resource_cancel` cancels a tracked Begun or Admitted resource by
+identity, including after End has closed the local upload window. It preserves
+the identity until the server's terminal event. Current uploads use the existing
+transport cancellation wrapper. This adds a function without changing layouts.
+The independent C control covers refused End, busy admission, a stale generation,
+identity retention, current-upload cancellation and rejection of Accepted
+resources. Full `make check` passes; Rust's paired native suite passes 26 tests.
+Production-export qualification remains pending.
+
+## t333 permit expiry before candidate refusal
+
+`test_expiry_before_submit_refusal` failed on `c678319`: after a locally admitted
+candidate, authoritative permit expiry followed by submit refusal recreated a
+wait for the expiry already consumed. The helper then refused every new demand.
+Late terminal permit observations now clear the consumed permit identity, and
+candidate refusal restores a wait only while that identity remains outstanding.
+An old terminal record cannot disturb a newer demand. The regression and full
+`make check` pass; Rust's paired lifecycle controls cover both observation orders.
+This changes no public layout or wire contract. Production export qualification
+and SDK pin adoption remain pending under t333.
+
+## t333 reservation identity correction
+
+Two live C sessions could issue the same reservation serial and accept each
+other's token. `reservation_is_bound_to_its_session` reproduced the incorrect
+cross-session cancellation on `cfa6561`. Reserve now records the owner address
+and connection epoch; cancel and commit validate both before changing state.
+The regression and full `make check` suite pass. No wire contract changed.
+
+The public `sophia_ss_reservation` layout changed. Version 0.10.0-dev is marked
+unreleased; consumers and foreign-language bindings must rebuild together with
+the SDK. The session must not move or be reinitialized with a live reservation.
+Rust `a2c0e74` supplies matching delayed-content capacity control with private
+connection-bound identities. Matrix revision 4 records remaining differences.
+Sophia production adoption and export gates remain pending.
+
 ## t317 final contract reconciliation
 
 The launch-authentication and shell-descriptor contract snapshots are copied
@@ -645,3 +929,47 @@ intended wire assertion; the diagnostic was moved after wire processing.
 
 Evidence records binary paths and hashes, not copies. This provenance addition
 follows the captured candidate; no implementation or test bytes changed.
+
+## Recipe authentication audience sets
+
+The authentication contract is copied from signed Sophia `c57cc30eedce72dfeacea6ced3d49df78b26da52`.
+It adds a bounded approved-audience set on the private Session-to-Factotum
+owner interface. Public afid and launch-relay bytes are unchanged; no SDK
+implementation changes or new authentication qualification are claimed here.
+
+## Namespace discovery foundation
+
+`spec/namespace-discovery.md` is copied without modification from signed Sophia
+`2ef7e39b984dfba12f346c1f4d2b98e08edb6d65`. The discovery parser and Linux directory lookup are
+implemented independently against that contract. Local socket tests cover pinned
+directory identity, long endpoint names, symlink refusal and descriptor flags.
+These tests do not claim Session launch integration or authentication; endpoint
+visibility never grants permission.
+
+Qualification: the full C `make check` suite and the namespace UBSan trap-mode probe pass. ASan was not run: the linker could not find its runtime libraries. Removing the declared endpoint-count check makes the complete-line truncation test fail. The source and all candidate files were restored byte-for-byte. This control qualifies truncation refusal, not authentication or a live Session launch.
+
+- `t318-c-discovery-01`: SHA256SUMS `52a43273353fe43ed83e4e5a45fc1a7b0e79a9bd15c5e1d929e829f6e2c3a41c`.
+- `t318-c-discovery-count-control-01`: SHA256SUMS `f74ef362887be288ebaafdebe5d159ce0fc0bdb5655888e06ab7210adb21dac1`.
+
+## Sequential recipe endpoint authentication
+
+The launch helper can reuse the completed conversation's exclusive, quiescent
+relay for another endpoint without resetting the first role transport. Pending
+relay work refuses. Independent scripted peers exercise both properties; no
+production multi-endpoint launch is claimed by this SDK-only run. The C check suite passes.
+
+Evidence `t318-c-relay-01` has SHA256SUMS SHA-256
+`226a7028ea678c8f2bb3b2082541c3365b8eeb1013bc6850afc52d3c950125ea`. The candidate hashes cover
+all modified/untracked files at the run; this provenance addition follows it.
+
+## B3 implementation checkpoint, 2026-10-17
+
+The upload window implements the queued-shell-writes amendment already pinned
+from signed Sophia `feaf3cbc7`. No new server feature, wire field or capability
+is inferred. Scripted tests cover four outstanding writes, rolling refill,
+reversed replies, short/EAGAIN recovery, iounit, fences, direct clockless retry
+and an idle session's retry timeout. Eight-slot attached clients retain support
+with three upload credits. API-PARITY.md records the independent Rust candidate
+and C rebuild requirement. Old/current export compatibility, signed snapshot
+adoption, fairness diagnostics and native cost qualification remain separate
+gates; no B3 performance result is claimed.
