@@ -83,13 +83,7 @@ kleis_lock *kleis_lock_open(int fd, const char *endpoint_dir,
   lock->endpoint_dir_fd =
       open(endpoint_dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   memset(&image_config, 0, sizeof(image_config));
-  /* Caller bounds only cap what this client will offer; the producer
-   * intersects them with the discovered lock limits. */
-  image_config.producer.bounds.max_resource_bytes = 1u << 26;
-  image_config.producer.bounds.max_width = 8192;
-  image_config.producer.bounds.max_height = 8192;
-  image_config.producer.bounds.max_outputs = SOPHIA_LF_MAX_OUTPUTS;
-  image_config.producer.bounds.transfer_slots = 4;
+  /* The adapter derives image bounds from the negotiated lock Limits. */
   image_config.producer.transfer_timeout_ms = 2000;
   image_config.producer.startup_deadline_ms = kleis_now_ms() + 5000;
   image_config.endpoint_dir = lock->endpoint_dir_fd;

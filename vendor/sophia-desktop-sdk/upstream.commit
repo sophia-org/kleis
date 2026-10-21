@@ -1,14 +1,14 @@
-tree ce4f2e92ebd3dc4b7bf60d1132803dc972121171
-parent 14c8fce5d0d75d21b43ee6eb7a01232c0abd1399
-author Mason Green <mason@greenm01.net> 1792355827 -0400
-committer Mason Green <mason@greenm01.net> 1792355827 -0400
+tree 2295fe58ac82173e1b7d777c288d64d14d334fd1
+parent 25be47d4292db5da3f877f64d8cb782c43eb5d7c
+author Mason Green <mason@greenm01.net> 1792550372 -0400
+committer Mason Green <mason@greenm01.net> 1792550372 -0400
 gpgsig -----BEGIN PGP SIGNATURE-----
  
- iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCatUt8xsUgAAAAAAEAA5t
- YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGLE5AEAvSxxe195ucOWk75deIYd
- +3UzgRn507gpL/eMbFu6EIEA/R4z+WCCnGOZ0pBIVJ7VoXMmHfSuWJ/f+BNW08cK
- VHAO
- =KLRM
+ iJEEABYIADkWIQR+I2QUnoHdebKT6m9XGEu2KoAAYgUCatgl5BsUgAAAAAAEAA5t
+ YW51MiwyLjUrMS4xMiwyLDIACgkQVxhLtiqAAGLwTwD/ZcqRL/x1Hf2AHAv/xGO8
+ S7htUdBCMTdMQBzil6AJtmUBAJiAvbWtt3JxpKEnwJHc7qlYj/Zpx+l8QX4F9Jrs
+ MJ4A
+ =5CYc
  -----END PGP SIGNATURE-----
 
-Bound and harden mapped ISB construction and finalization
+Derive lock image discovery bounds from negotiated role limits
