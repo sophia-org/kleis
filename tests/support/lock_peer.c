@@ -13,6 +13,7 @@ struct kleis_peer {
   struct set discovery;
   struct image_rig channel;
   unsigned again_begin, again_cancel, begin_submits, cancel_submits;
+  unsigned candidate_submits, candidates_by_output[2], prefix_events;
   unsigned demand_submits, admitted, cancelled, sources, released, hold;
   uint64_t lock_epoch;
   int ready, accepted_status;
@@ -75,11 +76,20 @@ void kleis_peer_release_uploads(struct kleis_peer *k) {
   if (k->sources > k->released) release_source(k, 0);
   events(&k->peer);
 }
+void kleis_peer_prefix_events(struct kleis_peer *k) { k->prefix_events = 1; }
 static void classify(struct kleis_peer *k, const uint8_t *m) {
   uint32_t fid = (uint32_t)get(m + 7, 4);
   uint16_t kind;
   if (m[4] != 118 || fid >= 256 || k->peer.files[fid] != F_SUBMIT) return;
   kind = (uint16_t)get(k->peer.tx + 6, 2);
+  if (k->prefix_events && (kind == SOPHIA_LF_FRAME_DEMAND || kind == SOPHIA_LF_CANDIDATE)) {
+    struct sophia_lf_record r;
+    memset(&r, 0, sizeof r);
+    r.value.resource_released.transaction = 999;
+    r.value.resource_released.resource.id = 999;
+    r.value.resource_released.resource.generation = 1;
+    event(&k->peer, SOPHIA_LF_RESOURCE_RELEASED, &r);
+  }
   if (kind == SOPHIA_IC_IMAGE_BEGIN) {
     ++k->begin_submits;
     if (k->again_begin) { --k->again_begin; k->peer.submit_again = 1; }
@@ -88,6 +98,12 @@ static void classify(struct kleis_peer *k, const uint8_t *m) {
     if (k->again_cancel) { --k->again_cancel; k->peer.submit_again = 1; }
   } else if (kind == SOPHIA_LF_FRAME_DEMAND) {
     assert(k->released && !k->hold); ++k->demand_submits;
+  } else if (kind == SOPHIA_LF_CANDIDATE) {
+    struct sophia_lf_record candidate;
+    assert(!sophia_lf_decode(k->peer.tx, k->peer.tx_size, &candidate));
+    assert(candidate.value.candidate.output >= 1 && candidate.value.candidate.output <= 2);
+    ++k->candidates_by_output[candidate.value.candidate.output - 1];
+    ++k->candidate_submits;
   } else assert(kind != SOPHIA_LF_RESOURCE_BEGIN && kind != SOPHIA_LF_RESOURCE_END);
 }
 static void image_progress(struct kleis_peer *k) {
@@ -99,7 +115,7 @@ static void image_progress(struct kleis_peer *k) {
     const struct sophia_ic_metadata *m = &p->image_begin.value.image;
     assert(m->admission_epoch == k->lock_epoch && m->admission_epoch != EPOCH);
     assert(m->width == 4 && m->height == 2 && m->stride == 16 && m->logical_bytes == 32);
-    assert(m->output == 1 && m->allocation == 41 && m->topology_generation == 9);
+    assert(m->output >= 1 && m->output <= 2 && m->allocation == 40 + m->output && m->topology_generation == 9);
     r = p->image_begin; r.header.kind = SOPHIA_IC_IMAGE_ADMITTED;
     image_record(p, &r); ++k->admitted;
   }
@@ -152,3 +168,7 @@ unsigned kleis_peer_held_uploads(const struct kleis_peer *k) { return k->sources
 int kleis_peer_negotiated(const struct kleis_peer *k) { return (int)k->peer.negotiated; }
 int kleis_peer_upload_open(const struct kleis_peer *k) { return k->admitted > k->released; }
 int kleis_peer_caught_up(const struct kleis_peer *k) { return k->peer.acked == k->peer.sequence; }
+
+unsigned kleis_peer_candidate_submits(const struct kleis_peer *k) { return k->candidate_submits; }
+
+unsigned kleis_peer_output_candidates(const struct kleis_peer *k, unsigned output) { assert(output < 2); return k->candidates_by_output[output]; }

@@ -36,10 +36,16 @@ proc negotiated(k: Peer): cint {.importc: "kleis_peer_negotiated".}
 proc uploadOpen(k: Peer): cint {.importc: "kleis_peer_upload_open".}
 proc caughtUp(k: Peer): cint {.importc: "kleis_peer_caught_up".}
 
-proc providerMain() {.thread.} =
+proc candidateSubmits(k: Peer): cuint {.importc: "kleis_peer_candidate_submits".}
+proc peerPrefixEvents(k: Peer) {.importc: "kleis_peer_prefix_events".}
+proc outputCandidates(
+  k: Peer, output: cuint
+): cuint {.importc: "kleis_peer_output_candidates".}
+
+proc providerMain(animate: bool) {.thread.} =
   {.cast(gcsafe).}:
     var opts = defaultOptions()
-    opts.blank = true
+    opts.blank = not animate
     opts.noGpu = true
     try:
       runProvider(opts)
@@ -51,9 +57,9 @@ type Session = object
   listener: SocketHandle
   fd: cint
   peer: Peer
-  thread: Thread[void]
+  thread: Thread[bool]
 
-proc start(name: string): Session =
+proc start(name: string, animate = false): Session =
   result.dir = getTempDir() / ("kleis-provider-" & name & "-" & $getpid())
   removeDir(result.dir)
   createDir(result.dir)
@@ -71,7 +77,7 @@ proc start(name: string): Session =
   delEnv("SOPHIA_LOCK_CONFIG")
   for name in ["SOPHIA_SHELL_GPU_MODE", "SOPHIA_SHELL_GPU_RENDER_NODE"]:
     delEnv(name)
-  createThread(result.thread, providerMain)
+  createThread(result.thread, providerMain, animate)
   result.fd = cint(accept(result.listener, nil, nil))
   doAssert result.fd >= 0
   result.peer = peerNew(result.fd, result.dir.cstring)
@@ -184,5 +190,36 @@ suite "provider retries every staged submission":
       3000,
       proc(): bool =
         s.peer.beginSubmits() == 2,
+    )
+    s.finish()
+
+  test "coalesced custody, permit and outcome keep rain advancing":
+    var s = start("coalesced-progress", animate = true)
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.negotiated() != 0,
+    )
+    s.peer.peerLock(3, 1)
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.candidateSubmits() >= 3,
+    )
+    s.finish()
+
+  test "both outputs progress when receipts follow an earlier visible event":
+    var s = start("two-outputs", animate = true)
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.negotiated() != 0,
+    )
+    s.peer.peerPrefixEvents()
+    s.peer.peerLock(3, 2)
+    check s.serve(
+      3000,
+      proc(): bool =
+        s.peer.outputCandidates(0) >= 3 and s.peer.outputCandidates(1) >= 3,
     )
     s.finish()

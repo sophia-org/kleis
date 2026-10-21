@@ -95,9 +95,15 @@ proc reportBlocked(p: Provider, before: openArray[bool], cause: string) =
         "; waiting for a new lock object"
     )
 
+proc settlePending(p: var Provider): bool
+
 proc drainEvents(p: var Provider): bool =
   var e: LockEvent
   for _ in 0 ..< 64:
+    # Service and consume can decode a Submitted immediately before the
+    # next visible event. Apply its custody before its permit or outcome;
+    # otherwise the presenter is still in the previous stage and drops it.
+    result = p.settlePending() or result
     if p.handle.lockEvent(e) == 0:
       break
     result = true
